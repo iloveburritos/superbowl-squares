@@ -1,0 +1,96 @@
+[
+  {
+    "type": "event",
+    "name": "SquarePurchased",
+    "inputs": [
+      { "name": "buyer", "type": "address", "indexed": true },
+      { "name": "position", "type": "uint8", "indexed": true },
+      { "name": "price", "type": "uint256", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "PoolClosed",
+    "inputs": [{ "name": "timestamp", "type": "uint256", "indexed": false }]
+  },
+  {
+    "type": "event",
+    "name": "NumbersAssigned",
+    "inputs": [
+      { "name": "rowNumbers", "type": "uint8[10]", "indexed": false },
+      { "name": "colNumbers", "type": "uint8[10]", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ScoreSubmitted",
+    "inputs": [
+      { "name": "quarter", "type": "uint8", "indexed": true },
+      { "name": "teamAScore", "type": "uint8", "indexed": false },
+      { "name": "teamBScore", "type": "uint8", "indexed": false },
+      { "name": "assertionId", "type": "bytes32", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ScoreSettled",
+    "inputs": [
+      { "name": "quarter", "type": "uint8", "indexed": true },
+      { "name": "winner", "type": "address", "indexed": false },
+      { "name": "payout", "type": "uint256", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "PayoutClaimed",
+    "inputs": [
+      { "name": "winner", "type": "address", "indexed": true },
+      { "name": "quarter", "type": "uint8", "indexed": true },
+      { "name": "amount", "type": "uint256", "indexed": false }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getPoolInfo",
+    "inputs": [],
+    "outputs": [
+      { "name": "name", "type": "string" },
+      { "name": "state", "type": "uint8" },
+      { "name": "squarePrice", "type": "uint256" },
+      { "name": "paymentToken", "type": "address" },
+      { "name": "totalPot", "type": "uint256" },
+      { "name": "squaresSold", "type": "uint256" },
+      { "name": "teamAName", "type": "string" },
+      { "name": "teamBName", "type": "string" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "maxSquaresPerUser",
+    "inputs": [],
+    "outputs": [{ "type": "uint8" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPayoutPercentages",
+    "inputs": [],
+    "outputs": [{ "type": "uint8[4]" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "purchaseDeadline",
+    "inputs": [],
+    "outputs": [{ "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "vrfDeadline",
+    "inputs": [],
+    "outputs": [{ "type": "uint256" }],
+    "stateMutability": "view"
+  }
+]

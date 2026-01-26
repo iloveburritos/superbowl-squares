@@ -1,0 +1,103 @@
+enum PoolState {
+  OPEN
+  CLOSED
+  NUMBERS_ASSIGNED
+  Q1_SCORED
+  Q2_SCORED
+  Q3_SCORED
+  FINAL_SCORED
+}
+
+type Pool @entity {
+  id: ID! # Contract address
+  creator: Bytes!
+  name: String!
+  squarePrice: BigInt!
+  paymentToken: Bytes!
+  maxSquaresPerUser: Int!
+  payoutPercentages: [Int!]!
+  teamAName: String!
+  teamBName: String!
+  purchaseDeadline: BigInt!
+  vrfDeadline: BigInt!
+  state: PoolState!
+  squares: [Square!]! @derivedFrom(field: "pool")
+  rowNumbers: [Int!]
+  colNumbers: [Int!]
+  scores: [Score!]! @derivedFrom(field: "pool")
+  totalPot: BigInt!
+  squaresSold: Int!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdAtTransaction: Bytes!
+}
+
+type Square @entity {
+  id: ID! # poolAddress-position
+  pool: Pool!
+  position: Int!
+  owner: Bytes!
+  purchasedAt: BigInt!
+  purchasedAtBlock: BigInt!
+  purchasedAtTransaction: Bytes!
+}
+
+type Score @entity {
+  id: ID! # poolAddress-quarter
+  pool: Pool!
+  quarter: Int! # 0=Q1, 1=Q2, 2=Q3, 3=Final
+  teamAScore: Int!
+  teamBScore: Int!
+  winner: Bytes
+  payout: BigInt
+  submitted: Boolean!
+  settled: Boolean!
+  assertionId: Bytes
+  submittedAt: BigInt
+  settledAt: BigInt
+}
+
+type User @entity {
+  id: ID! # User address
+  pools: [UserPool!]! @derivedFrom(field: "user")
+  squares: [Square!]!
+  totalSquaresPurchased: Int!
+  totalSpent: BigInt!
+  totalWon: BigInt!
+}
+
+type UserPool @entity {
+  id: ID! # userAddress-poolAddress
+  user: User!
+  pool: Pool!
+  squareCount: Int!
+  squares: [Int!]!
+  totalSpent: BigInt!
+  wonQuarters: [Int!]!
+  totalWon: BigInt!
+}
+
+type Factory @entity {
+  id: ID! # Factory address
+  poolCount: Int!
+  totalPotValue: BigInt!
+  totalSquaresSold: Int!
+}
+
+type PoolDailySnapshot @entity {
+  id: ID! # poolAddress-day
+  pool: Pool!
+  day: Int!
+  squaresSold: Int!
+  totalPot: BigInt!
+  state: PoolState!
+}
+
+type GlobalDailySnapshot @entity {
+  id: ID! # day
+  day: Int!
+  newPools: Int!
+  totalPools: Int!
+  totalSquaresSold: Int!
+  totalPotValue: BigInt!
+}

@@ -1,0 +1,577 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Barlow:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Stadium Night Palette */
+  --midnight: #0a0e1a;
+  --deep-navy: #101827;
+  --turf-green: #22c55e;
+  --electric-lime: #84cc16;
+  --championship-gold: #fbbf24;
+  --trophy-gold: #f59e0b;
+  --floodlight: #fef3c7;
+  --chrome: #e5e7eb;
+  --smoke: #6b7280;
+  --steel: #374151;
+  --grass-dark: #166534;
+  --grass-light: #4ade80;
+
+  /* Semantic */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+
+  /* Font families */
+  --font-display: 'Oswald', sans-serif;
+  --font-body: 'Barlow', sans-serif;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--midnight);
+  color: var(--chrome);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Stadium atmosphere background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 20% 20%, rgba(251, 191, 36, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 30%, rgba(132, 204, 22, 0.06), transparent),
+    linear-gradient(180deg, var(--midnight) 0%, var(--deep-navy) 100%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Noise texture overlay */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Selection */
+::selection {
+  background: var(--turf-green);
+  color: var(--midnight);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--deep-navy);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--steel);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--smoke);
+}
+
+@layer base {
+  /* Focus states */
+  *:focus-visible {
+    outline: 2px solid var(--turf-green);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn-primary {
+    @apply relative overflow-hidden font-semibold py-3 px-6 rounded-lg transition-all duration-300;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: linear-gradient(135deg, var(--turf-green) 0%, var(--electric-lime) 100%);
+    color: var(--midnight);
+    box-shadow:
+      0 4px 20px rgba(34, 197, 94, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 30px rgba(34, 197, 94, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+    filter: grayscale(0.5);
+  }
+
+  .btn-secondary {
+    @apply relative font-semibold py-3 px-6 rounded-lg transition-all duration-300;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: transparent;
+    color: var(--chrome);
+    border: 2px solid var(--steel);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--turf-green);
+    color: var(--turf-green);
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
+  }
+
+  .btn-secondary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-gold {
+    @apply relative overflow-hidden font-semibold py-3 px-6 rounded-lg transition-all duration-300;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: linear-gradient(135deg, var(--championship-gold) 0%, var(--trophy-gold) 100%);
+    color: var(--midnight);
+    box-shadow:
+      0 4px 20px rgba(251, 191, 36, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .btn-gold:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 30px rgba(251, 191, 36, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  /* Cards */
+  .card {
+    @apply relative rounded-2xl overflow-hidden;
+    background: linear-gradient(135deg, rgba(16, 24, 39, 0.9) 0%, rgba(10, 14, 26, 0.95) 100%);
+    border: 1px solid rgba(55, 65, 81, 0.5);
+    box-shadow:
+      0 4px 30px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.3), transparent);
+  }
+
+  .card-highlight {
+    @apply card;
+    border-color: rgba(34, 197, 94, 0.3);
+    box-shadow:
+      0 4px 30px rgba(0, 0, 0, 0.3),
+      0 0 60px rgba(34, 197, 94, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .card-gold {
+    @apply card;
+    border-color: rgba(251, 191, 36, 0.3);
+  }
+
+  .card-gold::before {
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.5), transparent);
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full py-3 px-4 rounded-lg transition-all duration-300;
+    font-family: var(--font-body);
+    background: rgba(16, 24, 39, 0.8);
+    border: 1px solid var(--steel);
+    color: var(--chrome);
+  }
+
+  .input::placeholder {
+    color: var(--smoke);
+  }
+
+  .input:focus {
+    @apply outline-none;
+    border-color: var(--turf-green);
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
+  }
+
+  .label {
+    @apply block text-sm font-semibold mb-2;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--smoke);
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-bold;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-open {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--turf-green);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .badge-closed {
+    background: rgba(251, 191, 36, 0.2);
+    color: var(--championship-gold);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+  }
+
+  .badge-active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    animation: pulse-glow-blue 2s ease-in-out infinite;
+  }
+
+  .badge-complete {
+    background: rgba(107, 114, 128, 0.2);
+    color: var(--smoke);
+    border: 1px solid rgba(107, 114, 128, 0.3);
+  }
+
+  .badge-operator {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%);
+    color: var(--championship-gold);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+  }
+}
+
+/* Grid square styles - Stadium Field aesthetic */
+.square {
+  @apply relative aspect-square flex items-center justify-center text-xs font-semibold rounded-sm transition-all duration-200 cursor-pointer overflow-hidden;
+  font-family: var(--font-body);
+}
+
+.square::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.square-empty {
+  background: linear-gradient(135deg, rgba(22, 101, 52, 0.3) 0%, rgba(22, 101, 52, 0.15) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.square-empty:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.4) 0%, rgba(34, 197, 94, 0.2) 100%);
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.square-owned {
+  background: linear-gradient(135deg, rgba(55, 65, 81, 0.8) 0%, rgba(31, 41, 55, 0.8) 100%);
+  border: 1px solid rgba(107, 114, 128, 0.4);
+  color: var(--smoke);
+}
+
+.square-mine {
+  background: linear-gradient(135deg, var(--turf-green) 0%, var(--grass-dark) 100%);
+  border: 1px solid rgba(74, 222, 128, 0.6);
+  color: white;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
+}
+
+.square-winner {
+  background: linear-gradient(135deg, var(--championship-gold) 0%, var(--trophy-gold) 100%);
+  border: 2px solid rgba(254, 243, 199, 0.8);
+  color: var(--midnight);
+  animation: winner-pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+  z-index: 20;
+}
+
+.square-selected {
+  @apply ring-2 ring-white;
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.4),
+    inset 0 0 20px rgba(255, 255, 255, 0.1);
+  transform: scale(1.08);
+  z-index: 15;
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+  50% { box-shadow: 0 0 15px rgba(34, 197, 94, 0.5); }
+}
+
+@keyframes pulse-glow-blue {
+  0%, 100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+}
+
+@keyframes winner-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px rgba(251, 191, 36, 0.8);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Animation utilities */
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.5s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Stagger delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* Shimmer loading effect */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(55, 65, 81, 0.3) 25%,
+    rgba(75, 85, 99, 0.5) 50%,
+    rgba(55, 65, 81, 0.3) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--turf-green) 0%, var(--electric-lime) 50%, var(--championship-gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, var(--championship-gold) 0%, var(--trophy-gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Stadium field lines for grid */
+.field-lines {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 10%,
+      rgba(255, 255, 255, 0.03) 10%,
+      rgba(255, 255, 255, 0.03) 10.5%
+    );
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.4);
+}
+
+.glow-gold {
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.4);
+}
+
+/* Progress bar */
+.progress-bar {
+  @apply relative h-2 rounded-full overflow-hidden;
+  background: rgba(55, 65, 81, 0.5);
+}
+
+.progress-bar-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, var(--grass-dark) 0%, var(--turf-green) 50%, var(--electric-lime) 100%);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* Section divider */
+.divider {
+  @apply relative h-px my-8;
+  background: linear-gradient(90deg, transparent, var(--steel), transparent);
+}
+
+/* Stat display */
+.stat-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.stat-label {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--smoke);
+}
+
+/* Number display in grid */
+.grid-number {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--turf-green);
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* Hero section specific */
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.hero-subtitle {
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--smoke);
+  max-width: 600px;
+}
+
+/* Feature icon */
+.feature-icon {
+  @apply flex items-center justify-center w-16 h-16 rounded-xl;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.05) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* Step number */
+.step-number {
+  @apply flex items-center justify-center w-14 h-14 rounded-full font-bold text-xl;
+  font-family: var(--font-display);
+  background: linear-gradient(135deg, var(--turf-green) 0%, var(--grass-dark) 100%);
+  color: white;
+  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4);
+}
+
+/* Connector line between steps */
+.step-connector {
+  @apply hidden md:block absolute top-7 left-1/2 w-full h-0.5;
+  background: linear-gradient(90deg, var(--turf-green), transparent);
+}

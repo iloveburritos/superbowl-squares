@@ -1,0 +1,61 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: SquaresFactory
+    network: mainnet # Change per deployment: mainnet, base, arbitrum-one
+    source:
+      address: "0x0000000000000000000000000000000000000000" # Replace with deployed address
+      abi: SquaresFactory
+      startBlock: 0 # Replace with deployment block
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Factory
+        - Pool
+      abis:
+        - name: SquaresFactory
+          file: ./abis/SquaresFactory.json
+        - name: SquaresPool
+          file: ./abis/SquaresPool.json
+      eventHandlers:
+        - event: PoolCreated(indexed address,indexed address,string,uint256,address)
+          handler: handlePoolCreated
+      file: ./src/factory.ts
+
+templates:
+  - kind: ethereum
+    name: SquaresPool
+    network: mainnet # Change per deployment
+    source:
+      abi: SquaresPool
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Pool
+        - Square
+        - Score
+        - User
+        - UserPool
+      abis:
+        - name: SquaresPool
+          file: ./abis/SquaresPool.json
+      eventHandlers:
+        - event: SquarePurchased(indexed address,indexed uint8,uint256)
+          handler: handleSquarePurchased
+        - event: PoolClosed(uint256)
+          handler: handlePoolClosed
+        - event: NumbersAssigned(uint8[10],uint8[10])
+          handler: handleNumbersAssigned
+        - event: ScoreSubmitted(indexed uint8,uint8,uint8,bytes32)
+          handler: handleScoreSubmitted
+        - event: ScoreSettled(indexed uint8,address,uint256)
+          handler: handleScoreSettled
+        - event: PayoutClaimed(indexed address,indexed uint8,uint256)
+          handler: handlePayoutClaimed
+      file: ./src/pool.ts

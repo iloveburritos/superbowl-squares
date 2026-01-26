@@ -1,0 +1,103 @@
+export const SquaresFactoryABI = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: '_vrfCoordinator', type: 'address' },
+      { name: '_umaOracle', type: 'address' },
+      { name: '_umaBondToken', type: 'address' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'createPool',
+    inputs: [
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'name', type: 'string' },
+          { name: 'squarePrice', type: 'uint256' },
+          { name: 'paymentToken', type: 'address' },
+          { name: 'maxSquaresPerUser', type: 'uint8' },
+          { name: 'payoutPercentages', type: 'uint8[4]' },
+          { name: 'teamAName', type: 'string' },
+          { name: 'teamBName', type: 'string' },
+          { name: 'purchaseDeadline', type: 'uint256' },
+          { name: 'vrfDeadline', type: 'uint256' },
+          { name: 'vrfSubscriptionId', type: 'uint64' },
+          { name: 'vrfKeyHash', type: 'bytes32' },
+          { name: 'umaDisputePeriod', type: 'uint256' },
+          { name: 'umaBondAmount', type: 'uint256' },
+        ],
+      },
+    ],
+    outputs: [{ name: 'pool', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'getPoolsByCreator',
+    inputs: [{ name: 'creator', type: 'address' }],
+    outputs: [{ type: 'address[]' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getAllPools',
+    inputs: [
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    outputs: [
+      { name: 'pools', type: 'address[]' },
+      { name: 'total', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getPoolCount',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getPoolCountByCreator',
+    inputs: [{ name: 'creator', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'vrfCoordinator',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'umaOracle',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'umaBondToken',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    name: 'PoolCreated',
+    inputs: [
+      { name: 'pool', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'name', type: 'string', indexed: false },
+      { name: 'squarePrice', type: 'uint256', indexed: false },
+      { name: 'paymentToken', type: 'address', indexed: false },
+    ],
+  },
+] as const;
