@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
-import { parseEther, zeroAddress } from 'viem';
+import { parseEther, keccak256, toBytes } from 'viem';
 import { useCreatePool } from '@/hooks/useFactory';
 import { useRouter } from 'next/navigation';
 import type { PoolParams } from '@/lib/contracts';
@@ -14,20 +14,9 @@ import { Token, ETH_TOKEN, isNativeToken, parseTokenAmount, getTokensForChain } 
 // Super Bowl LX: February 8, 2026 at 6:30 PM EST
 const SUPER_BOWL_DATE = new Date('2026-02-08T18:30:00-05:00');
 const SUPER_BOWL_TIMESTAMP = Math.floor(SUPER_BOWL_DATE.getTime() / 1000);
-// VRF numbers assigned 2 days before game
-const VRF_DEADLINE_TIMESTAMP = SUPER_BOWL_TIMESTAMP - (2 * 24 * 60 * 60);
-
-// Default VRF configs per chain (example values - would need real subscription IDs)
-const VRF_CONFIGS: Record<number, { subscriptionId: bigint; keyHash: `0x${string}` }> = {
-  1: {
-    subscriptionId: BigInt(0),
-    keyHash: '0x8af398995b04c28e9951adb9721ef74c74f93e6a478f39e7e0777be13527e7ef',
-  },
-  11155111: {
-    subscriptionId: BigInt(0),
-    keyHash: '0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c',
-  },
-};
+// Purchase deadline & random numbers revealed 2 days before game
+const PURCHASE_DEADLINE_TIMESTAMP = SUPER_BOWL_TIMESTAMP - (2 * 24 * 60 * 60);
+const REVEAL_DEADLINE_TIMESTAMP = PURCHASE_DEADLINE_TIMESTAMP;
 
 // Fixed teams for Super Bowl LX
 const TEAM_A = 'Patriots';  // Rows
@@ -66,7 +55,8 @@ export function CreatePoolForm() {
     halftimePayout: '30',
     q3Payout: '15',
     finalPayout: '40',
-    purchaseDeadlineDays: '7',
+    isPrivate: false,
+    password: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -116,6 +106,10 @@ export function CreatePoolForm() {
       newErrors.chain = 'Please select a network';
     }
 
+    if (formData.isPrivate && !formData.password) {
+      newErrors.password = 'Password is required for private pools';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -135,13 +129,15 @@ export function CreatePoolForm() {
       return;
     }
 
-    const now = BigInt(Math.floor(Date.now() / 1000));
-    const vrfConfig = VRF_CONFIGS[chainId] || { subscriptionId: BigInt(0), keyHash: zeroAddress };
-
     // Parse price based on token decimals
     const squarePrice = isNativeToken(selectedToken)
       ? parseEther(formData.squarePrice)
       : parseTokenAmount(formData.squarePrice, selectedToken.decimals);
+
+    // Hash password for private pools, use zero bytes32 for public
+    const passwordHash: `0x${string}` = formData.isPrivate && formData.password
+      ? keccak256(toBytes(formData.password))
+      : '0x0000000000000000000000000000000000000000000000000000000000000000';
 
     const params: PoolParams = {
       name: formData.name,
@@ -156,12 +152,9 @@ export function CreatePoolForm() {
       ] as [number, number, number, number],
       teamAName: TEAM_A,
       teamBName: TEAM_B,
-      purchaseDeadline: now + BigInt(parseInt(formData.purchaseDeadlineDays) * 86400),
-      vrfDeadline: BigInt(VRF_DEADLINE_TIMESTAMP),
-      vrfSubscriptionId: vrfConfig.subscriptionId,
-      vrfKeyHash: vrfConfig.keyHash,
-      umaDisputePeriod: BigInt(0), // Not using UMA - operator submits scores
-      umaBondAmount: BigInt(0),
+      purchaseDeadline: BigInt(PURCHASE_DEADLINE_TIMESTAMP),
+      revealDeadline: BigInt(REVEAL_DEADLINE_TIMESTAMP),
+      passwordHash,
     };
 
     await createPool(params);
@@ -198,10 +191,17 @@ export function CreatePoolForm() {
     <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate className="space-y-6">
       {/* Progress Steps */}
       <div className="flex justify-between items-center mb-8 relative">
-        <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-[var(--steel)]/30 -translate-y-1/2" />
+        {/* Background line - connects icon centers */}
+        <div className="absolute top-6 left-[24px] right-[24px] h-0.5 bg-[var(--steel)]/30" />
+        {/* Progress line - width based on current step */}
         <div
-          className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[var(--turf-green)] to-[var(--electric-lime)] -translate-y-1/2 transition-all duration-500"
-          style={{ width: `${(activeSection / (sections.length - 1)) * 100}%` }}
+          className="absolute top-6 left-[24px] h-0.5 bg-gradient-to-r from-[var(--turf-green)] to-[var(--electric-lime)] transition-all duration-500"
+          style={{
+            width: activeSection === 0 ? '0' :
+                   activeSection === 1 ? 'calc(33.33% - 16px)' :
+                   activeSection === 2 ? 'calc(66.66% - 32px)' :
+                   'calc(100% - 48px)'
+          }}
         />
         {sections.map((section, index) => (
           <button
@@ -217,8 +217,8 @@ export function CreatePoolForm() {
                 index === activeSection
                   ? 'bg-gradient-to-br from-[var(--turf-green)] to-[var(--grass-dark)] shadow-[0_0_20px_rgba(34,197,94,0.4)] scale-110'
                   : index < activeSection
-                  ? 'bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/40'
-                  : 'bg-[var(--steel)]/30 border border-[var(--steel)]/50'
+                  ? 'bg-[var(--midnight)] border border-[var(--turf-green)]/40'
+                  : 'bg-[var(--midnight)] border border-[var(--steel)]/50'
               }`}
             >
               {section.icon}
@@ -376,8 +376,59 @@ export function CreatePoolForm() {
             {errors.name && <p className="text-[var(--danger)] text-sm mt-2">{errors.name}</p>}
           </div>
 
+          {/* Private Pool Toggle */}
+          <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/30">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                  <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div>
+                  <p className="font-medium text-[var(--chrome)]">Private Pool</p>
+                  <p className="text-xs text-[var(--smoke)]">Require a password to join</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, isPrivate: !prev.isPrivate, password: prev.isPrivate ? '' : prev.password }))}
+                className={`relative w-14 h-7 rounded-full transition-colors ${
+                  formData.isPrivate ? 'bg-[var(--turf-green)]' : 'bg-[var(--steel)]/50'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    formData.isPrivate ? 'translate-x-8' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {formData.isPrivate && (
+              <div className="mt-4 pt-4 border-t border-[var(--steel)]/30">
+                <label className="label">Pool Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Enter a password for your pool"
+                  className="input w-full"
+                />
+                <p className="text-xs text-[var(--smoke)] mt-2">
+                  Share this password with people you want to invite. They'll need it to buy squares.
+                </p>
+                {formData.isPrivate && !formData.password && (
+                  <p className="text-xs text-[var(--championship-gold)] mt-1">
+                    Please enter a password for your private pool
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="p-4 rounded-xl bg-[var(--steel)]/20 border border-[var(--steel)]/30">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-2">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
                 <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -386,27 +437,16 @@ export function CreatePoolForm() {
                 PURCHASE DEADLINE
               </span>
             </div>
-            <div className="flex items-center gap-4">
-              <input
-                type="number"
-                name="purchaseDeadlineDays"
-                value={formData.purchaseDeadlineDays}
-                onChange={handleChange}
-                min="1"
-                max="30"
-                className="input w-24 text-xl font-bold text-center"
-              />
-              <span className="text-[var(--smoke)]">days from now</span>
-            </div>
-            <p className="text-xs text-[var(--smoke)] mt-2 opacity-70">
-              Random numbers will be assigned on Feb 6, 2026 (2 days before game)
+            <p className="text-[var(--chrome)] font-bold">February 6, 2026 at 6:30 PM EST</p>
+            <p className="text-xs text-[var(--smoke)] mt-1 opacity-70">
+              Squares close 2 days before kickoff. Random numbers assigned at this time.
             </p>
           </div>
         </div>
       </div>
 
       {/* Section 1: Pricing */}
-      <div className={`card p-8 transition-all duration-300 ${activeSection === 1 ? 'block' : 'hidden'}`}>
+      <div className={`card p-8 transition-all duration-300 !overflow-visible ${activeSection === 1 ? 'block' : 'hidden'}`}>
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-[var(--championship-gold)]/20 border border-[var(--championship-gold)]/30 flex items-center justify-center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
@@ -422,9 +462,9 @@ export function CreatePoolForm() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-visible">
           {/* Token Selection */}
-          <div>
+          <div className="overflow-visible">
             <label className="label">Payment Token</label>
             <TokenSelector
               chainId={targetChainId}
@@ -528,9 +568,10 @@ export function CreatePoolForm() {
           ].map(({ name, label, color }) => (
             <div key={name} className="relative">
               <div
-                className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-xs font-bold"
+                className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-sm font-bold z-10"
                 style={{
-                  backgroundColor: `${color}20`,
+                  backgroundColor: 'var(--midnight)',
+                  boxShadow: `inset 0 0 0 100px ${color}30`,
                   color: color,
                   fontFamily: 'var(--font-display)',
                   letterSpacing: '0.1em',
@@ -548,7 +589,7 @@ export function CreatePoolForm() {
                 <input
                   type="number"
                   name={name}
-                  value={formData[name as keyof typeof formData]}
+                  value={formData[name as 'q1Payout' | 'halftimePayout' | 'q3Payout' | 'finalPayout']}
                   onChange={handleChange}
                   min="0"
                   max="100"
@@ -644,6 +685,32 @@ export function CreatePoolForm() {
             </div>
           </div>
 
+          {/* Pool Privacy */}
+          <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--smoke)]">Pool Access</span>
+              <span className={`font-bold flex items-center gap-2 ${formData.isPrivate ? 'text-[var(--championship-gold)]' : 'text-[var(--turf-green)]'}`}>
+                {formData.isPrivate ? (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    Private (Password Protected)
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                      <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    Public (Anyone can join)
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+
           {/* Matchup */}
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
             <div className="flex justify-between items-center">
@@ -701,22 +768,25 @@ export function CreatePoolForm() {
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
             <div className="text-[var(--smoke)] mb-3">Payout Structure</div>
             <div className="grid grid-cols-4 gap-2">
-              <div className="text-center p-2 rounded-lg bg-[var(--turf-green)]/10">
-                <div className="text-xs text-[var(--smoke)]">Q1</div>
-                <div className="font-bold text-[var(--turf-green)]">{formData.q1Payout}%</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-[var(--grass-light)]/10">
-                <div className="text-xs text-[var(--smoke)]">Halftime</div>
-                <div className="font-bold text-[var(--grass-light)]">{formData.halftimePayout}%</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-[var(--electric-lime)]/10">
-                <div className="text-xs text-[var(--smoke)]">Q3</div>
-                <div className="font-bold text-[var(--electric-lime)]">{formData.q3Payout}%</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-[var(--championship-gold)]/10">
-                <div className="text-xs text-[var(--smoke)]">Final</div>
-                <div className="font-bold text-[var(--championship-gold)]">{formData.finalPayout}%</div>
-              </div>
+              {[
+                { label: 'Q1', payout: formData.q1Payout, color: 'var(--turf-green)' },
+                { label: 'Halftime', payout: formData.halftimePayout, color: 'var(--grass-light)' },
+                { label: 'Q3', payout: formData.q3Payout, color: 'var(--electric-lime)' },
+                { label: 'Final', payout: formData.finalPayout, color: 'var(--championship-gold)' },
+              ].map(({ label, payout, color }) => {
+                const maxPot = parseFloat(formData.squarePrice || '0') * 100;
+                const amount = (maxPot * parseInt(payout || '0')) / 100;
+                const decimals = selectedToken.decimals === 6 ? 2 : 4;
+                return (
+                  <div key={label} className="text-center p-2 rounded-lg" style={{ backgroundColor: `${color}10` }}>
+                    <div className="text-xs text-[var(--smoke)]">{label}</div>
+                    <div className="font-bold" style={{ color }}>
+                      {parseFloat(amount.toFixed(decimals))} {selectedToken.symbol}
+                    </div>
+                    <div className="text-xs text-[var(--smoke)]">{payout}%</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -724,22 +794,8 @@ export function CreatePoolForm() {
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
             <div className="flex justify-between items-center">
               <span className="text-[var(--smoke)]">Purchase Deadline</span>
-              <span className="font-bold text-[var(--chrome)]">{formData.purchaseDeadlineDays} days from now</span>
+              <span className="font-bold text-[var(--chrome)]">Feb 6, 2026 @ 6:30 PM EST</span>
             </div>
-          </div>
-
-          {/* Score Verification */}
-          <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-            <div className="flex items-center gap-2 mb-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-purple-400">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              <span className="text-purple-400 font-medium">Score Verification</span>
-            </div>
-            <p className="text-sm text-[var(--smoke)]">
-              Scores automatically verified from ESPN, Yahoo Sports, and CBS Sports via Chainlink Functions
-            </p>
           </div>
         </div>
 

@@ -15,7 +15,7 @@ export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
   [CHAIN_IDS.MAINNET]: '0x0000000000000000000000000000000000000000',
   [CHAIN_IDS.BASE]: '0x0000000000000000000000000000000000000000',
   [CHAIN_IDS.ARBITRUM]: '0x0000000000000000000000000000000000000000',
-  [CHAIN_IDS.SEPOLIA]: '0xD6faaC1a709E760BAbF64272568402587f9b379D',
+  [CHAIN_IDS.SEPOLIA]: '0xc6C82cEC04242F46d03e9bE80727b1BE02904686',
   [CHAIN_IDS.BASE_SEPOLIA]: '0x0000000000000000000000000000000000000000',
   [CHAIN_IDS.ARBITRUM_SEPOLIA]: '0x0000000000000000000000000000000000000000',
 };
@@ -86,7 +86,7 @@ export interface Score {
   teamBScore: number;
   submitted: boolean;
   settled: boolean;
-  assertionId: `0x${string}`;
+  requestId: `0x${string}`;
 }
 
 export interface PoolParams {
@@ -98,9 +98,6 @@ export interface PoolParams {
   teamAName: string;
   teamBName: string;
   purchaseDeadline: bigint;
-  vrfDeadline: bigint;
-  vrfSubscriptionId: bigint;
-  vrfKeyHash: `0x${string}`;
-  umaDisputePeriod: bigint;
-  umaBondAmount: bigint;
+  revealDeadline: bigint;
+  passwordHash: `0x${string}`;
 }

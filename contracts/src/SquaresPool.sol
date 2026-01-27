@@ -3,48 +3,42 @@ pragma solidity ^0.8.24;
 
 import {ISquaresPool} from "./interfaces/ISquaresPool.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
-import {IVRFCoordinatorV2Plus, VRFConsumerBaseV2Plus} from "./interfaces/IVRF.sol";
-import {IOptimisticOracleV3, OptimisticOracleV3CallbackRecipient} from "./interfaces/IOptimisticOracleV3.sol";
+import {IFunctionsRouter, IFunctionsClient, FunctionsRequest, FunctionsRequestLib} from "./interfaces/IFunctionsClient.sol";
 import {SquaresLib} from "./libraries/SquaresLib.sol";
 
 /// @title SquaresPool
-/// @notice A Super Bowl Squares betting pool with VRF randomness and UMA oracle for scores
-contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3CallbackRecipient {
-    // ============ Constants ============
-    uint16 private constant REQUEST_CONFIRMATIONS = 3;
-    uint32 private constant CALLBACK_GAS_LIMIT = 500000;
-    uint32 private constant NUM_WORDS = 2; // One for rows, one for columns
+/// @notice Super Bowl Squares with commit-reveal randomness + Chainlink Functions for multi-source score verification
+contract SquaresPool is ISquaresPool, IFunctionsClient {
+    using FunctionsRequestLib for FunctionsRequest;
 
-    // Extra args for VRF v2.5 native payment
-    bytes private constant EXTRA_ARGS = abi.encode(true); // nativePayment = true
+    // ============ Constants ============
+    uint32 private constant FUNCTIONS_CALLBACK_GAS_LIMIT = 300000;
+    uint16 private constant FUNCTIONS_DATA_VERSION = 1;
 
     // ============ Immutables ============
     address public immutable factory;
     address public immutable operator;
-    IOptimisticOracleV3 public immutable umaOracle;
-    address public immutable umaBondToken;
+    IFunctionsRouter public immutable functionsRouter;
 
     // ============ Pool Configuration ============
     string public name;
     uint256 public squarePrice;
-    address public paymentToken; // address(0) for ETH
+    address public paymentToken;
     uint8 public maxSquaresPerUser;
     uint8[4] public payoutPercentages;
     string public teamAName;
     string public teamBName;
     uint256 public purchaseDeadline;
-    uint256 public vrfDeadline;
+    uint256 public revealDeadline;
 
-    // VRF Configuration
-    uint64 public vrfSubscriptionId;
-    bytes32 public vrfKeyHash;
-
-    // UMA Configuration
-    uint64 public umaDisputePeriod;
-    uint256 public umaBondAmount;
+    // Chainlink Functions Configuration
+    uint64 public functionsSubscriptionId;
+    bytes32 public functionsDonId;
+    string public functionsSource; // JavaScript source code
 
     // ============ State ============
     PoolState public state;
+    bytes32 public passwordHash;
     address[100] public grid;
     uint8[10] public rowNumbers;
     uint8[10] public colNumbers;
@@ -52,18 +46,17 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
     uint256 public totalPot;
     uint256 public squaresSold;
 
-    // VRF state
-    uint256 public vrfRequestId;
+    // Commit-reveal state
+    bytes32 public commitment;
+    uint256 public commitBlock;
 
     // Score tracking
     mapping(Quarter => Score) public scores;
+    mapping(bytes32 => Quarter) public requestIdToQuarter;
 
     // User tracking
     mapping(address => uint8) public userSquareCount;
     mapping(address => mapping(Quarter => bool)) public payoutClaimed;
-
-    // Assertion tracking
-    mapping(bytes32 => Quarter) public assertionToQuarter;
 
     // ============ Errors ============
     error InvalidState(PoolState current, PoolState required);
@@ -73,16 +66,23 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
     error InsufficientPayment(uint256 sent, uint256 required);
     error TransferFailed();
     error PurchaseDeadlinePassed();
-    error VRFDeadlinePassed();
+    error RevealDeadlinePassed();
+    error AlreadyCommitted();
+    error NotCommitted();
+    error RevealTooEarly();
+    error RevealTooLate();
+    error InvalidReveal();
     error OnlyOperator();
     error OnlyFactory();
+    error OnlyFunctionsRouter();
     error PayoutAlreadyClaimed();
     error NotWinner();
     error ScoreNotSettled();
     error InvalidPayoutPercentages();
-    error ScoreAlreadySubmitted();
-    error AssertionNotSettled();
-    error OnlyUMAOracle();
+    error ScoreAlreadyPending();
+    error ScoreVerificationFailed();
+    error InvalidQuarterProgression();
+    error InvalidPassword();
 
     // ============ Modifiers ============
     modifier onlyOperator() {
@@ -95,6 +95,11 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         _;
     }
 
+    modifier onlyFunctionsRouter() {
+        if (msg.sender != address(functionsRouter)) revert OnlyFunctionsRouter();
+        _;
+    }
+
     modifier inState(PoolState required) {
         if (state != required) revert InvalidState(state, required);
         _;
@@ -102,20 +107,16 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
 
     // ============ Constructor ============
     constructor(
-        address _vrfCoordinator,
-        address _umaOracle,
-        address _umaBondToken,
+        address _functionsRouter,
         address _operator
-    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
+    ) {
         factory = msg.sender;
         operator = _operator;
-        umaOracle = IOptimisticOracleV3(_umaOracle);
-        umaBondToken = _umaBondToken;
+        functionsRouter = IFunctionsRouter(_functionsRouter);
         state = PoolState.OPEN;
     }
 
     // ============ Initialization ============
-    /// @notice Initialize the pool with parameters (called by factory)
     function initialize(PoolParams calldata params) external onlyFactory {
         if (!SquaresLib.validatePayoutPercentages(params.payoutPercentages)) {
             revert InvalidPayoutPercentages();
@@ -129,22 +130,34 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         teamAName = params.teamAName;
         teamBName = params.teamBName;
         purchaseDeadline = params.purchaseDeadline;
-        vrfDeadline = params.vrfDeadline;
-        vrfSubscriptionId = params.vrfSubscriptionId;
-        vrfKeyHash = params.vrfKeyHash;
-        umaDisputePeriod = uint64(params.umaDisputePeriod);
-        umaBondAmount = params.umaBondAmount;
+        revealDeadline = params.revealDeadline;
+        passwordHash = params.passwordHash;
+    }
+
+    /// @notice Set Chainlink Functions configuration (called by factory or operator)
+    function setFunctionsConfig(
+        uint64 _subscriptionId,
+        bytes32 _donId,
+        string calldata _source
+    ) external {
+        if (msg.sender != factory && msg.sender != operator) revert OnlyOperator();
+        functionsSubscriptionId = _subscriptionId;
+        functionsDonId = _donId;
+        functionsSource = _source;
     }
 
     // ============ Player Functions ============
 
-    /// @inheritdoc ISquaresPool
-    function buySquares(uint8[] calldata positions) external payable inState(PoolState.OPEN) {
+    function buySquares(uint8[] calldata positions, string calldata password) external payable inState(PoolState.OPEN) {
         if (block.timestamp > purchaseDeadline) revert PurchaseDeadlinePassed();
+
+        // Verify password for private pools
+        if (passwordHash != bytes32(0)) {
+            if (keccak256(bytes(password)) != passwordHash) revert InvalidPassword();
+        }
 
         uint256 totalCost = squarePrice * positions.length;
 
-        // Check max squares per user
         if (maxSquaresPerUser > 0) {
             uint8 newCount = userSquareCount[msg.sender] + uint8(positions.length);
             if (newCount > maxSquaresPerUser) {
@@ -153,22 +166,17 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
             userSquareCount[msg.sender] = newCount;
         }
 
-        // Process payment
         if (paymentToken == address(0)) {
-            // ETH payment
             if (msg.value < totalCost) revert InsufficientPayment(msg.value, totalCost);
-            // Refund excess
             if (msg.value > totalCost) {
                 (bool success,) = msg.sender.call{value: msg.value - totalCost}("");
                 if (!success) revert TransferFailed();
             }
         } else {
-            // ERC-20 payment
             bool success = IERC20(paymentToken).transferFrom(msg.sender, address(this), totalCost);
             if (!success) revert TransferFailed();
         }
 
-        // Assign squares
         for (uint256 i = 0; i < positions.length; i++) {
             uint8 pos = positions[i];
             if (pos >= 100) revert InvalidPosition(pos);
@@ -182,9 +190,7 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         squaresSold += positions.length;
     }
 
-    /// @inheritdoc ISquaresPool
     function claimPayout(Quarter quarter) external {
-        // Check quarter is scored
         if (uint8(quarter) == 0 && state < PoolState.Q1_SCORED) revert ScoreNotSettled();
         if (uint8(quarter) == 1 && state < PoolState.Q2_SCORED) revert ScoreNotSettled();
         if (uint8(quarter) == 2 && state < PoolState.Q3_SCORED) revert ScoreNotSettled();
@@ -197,7 +203,6 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
 
         payoutClaimed[msg.sender][quarter] = true;
 
-        // Transfer payout
         if (paymentToken == address(0)) {
             (bool success,) = msg.sender.call{value: payout}("");
             if (!success) revert TransferFailed();
@@ -211,52 +216,153 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
 
     // ============ Operator Functions ============
 
-    /// @inheritdoc ISquaresPool
     function closePool() external onlyOperator inState(PoolState.OPEN) {
         state = PoolState.CLOSED;
         emit PoolClosed(block.timestamp);
     }
 
-    /// @inheritdoc ISquaresPool
-    function requestRandomNumbers() external onlyOperator inState(PoolState.CLOSED) returns (uint256 requestId) {
-        if (block.timestamp > vrfDeadline) revert VRFDeadlinePassed();
+    function commitRandomness(bytes32 _commitment) external onlyOperator inState(PoolState.CLOSED) {
+        if (block.timestamp > revealDeadline) revert RevealDeadlinePassed();
+        if (commitment != bytes32(0)) revert AlreadyCommitted();
 
-        IVRFCoordinatorV2Plus.RandomWordsRequest memory request = IVRFCoordinatorV2Plus.RandomWordsRequest({
-            keyHash: vrfKeyHash,
-            subId: vrfSubscriptionId,
-            requestConfirmations: REQUEST_CONFIRMATIONS,
-            callbackGasLimit: CALLBACK_GAS_LIMIT,
-            numWords: NUM_WORDS,
-            extraArgs: EXTRA_ARGS
-        });
+        commitment = _commitment;
+        commitBlock = block.number;
 
-        requestId = i_vrfCoordinator.requestRandomWords(request);
-        vrfRequestId = requestId;
-
-        return requestId;
+        emit RandomnessCommitted(_commitment, block.number);
     }
 
-    // ============ VRF Callback ============
+    function revealRandomness(uint256 seed) external onlyOperator inState(PoolState.CLOSED) {
+        if (commitment == bytes32(0)) revert NotCommitted();
+        if (block.number <= commitBlock) revert RevealTooEarly();
 
-    /// @notice Callback from VRF with random numbers
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
-        if (requestId != vrfRequestId) return;
-        if (state != PoolState.CLOSED) return;
+        bytes32 commitBlockHash = blockhash(commitBlock);
+        if (commitBlockHash == bytes32(0)) revert RevealTooLate();
 
-        // Use first random word for rows, second for columns
-        rowNumbers = SquaresLib.fisherYatesShuffle(randomWords[0]);
-        colNumbers = SquaresLib.fisherYatesShuffle(randomWords[1]);
+        if (keccak256(abi.encodePacked(seed)) != commitment) revert InvalidReveal();
+
+        // Generate final randomness by combining seed with blockhash
+        uint256 randomness = uint256(keccak256(abi.encodePacked(seed, commitBlockHash)));
+
+        emit RandomnessRevealed(seed, commitBlockHash);
+
+        // Use randomness for row/column assignment
+        rowNumbers = SquaresLib.fisherYatesShuffle(randomness);
+        colNumbers = SquaresLib.fisherYatesShuffle(uint256(keccak256(abi.encodePacked(randomness, uint256(1)))));
         numbersSet = true;
 
         state = PoolState.NUMBERS_ASSIGNED;
         emit NumbersAssigned(rowNumbers, colNumbers);
     }
 
-    // ============ Oracle Functions ============
+    // ============ Score Fetching (Chainlink Functions) ============
 
-    /// @inheritdoc ISquaresPool
-    function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external {
+    /// @notice Request score from multiple sources via Chainlink Functions
+    /// @param quarter The quarter to fetch scores for
+    /// @dev Anyone can call this after numbers are assigned
+    function fetchScore(Quarter quarter) external returns (bytes32 requestId) {
         // Validate state progression
+        _validateQuarterProgression(quarter);
+
+        Score storage score = scores[quarter];
+        if (score.submitted) revert ScoreAlreadyPending();
+
+        // Build the request
+        string[] memory args = new string[](2);
+        args[0] = _quarterToString(quarter);
+        args[1] = "401547417"; // ESPN game ID for Super Bowl LX
+
+        FunctionsRequest memory req;
+        req.source = functionsSource;
+        req.args = args;
+
+        bytes memory requestData = req.encodeCBOR();
+
+        // Send request to Chainlink Functions
+        requestId = functionsRouter.sendRequest(
+            functionsSubscriptionId,
+            requestData,
+            FUNCTIONS_DATA_VERSION,
+            FUNCTIONS_CALLBACK_GAS_LIMIT,
+            functionsDonId
+        );
+
+        score.submitted = true;
+        score.requestId = requestId;
+        requestIdToQuarter[requestId] = quarter;
+
+        emit ScoreFetchRequested(quarter, requestId);
+        return requestId;
+    }
+
+    /// @notice Operator can manually submit scores (fallback if Chainlink Functions fails)
+    function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external {
+        // Only operator can manually submit (fallback if APIs fail)
+        if (msg.sender != operator) revert OnlyOperator();
+        _validateQuarterProgression(quarter);
+
+        Score storage score = scores[quarter];
+        score.teamAScore = teamAScore;
+        score.teamBScore = teamBScore;
+        score.submitted = true;
+        score.settled = true;
+
+        _advanceState(quarter);
+
+        (address winner, uint256 payout) = getWinner(quarter);
+        emit ScoreSubmitted(quarter, teamAScore, teamBScore, bytes32(0));
+        emit ScoreSettled(quarter, winner, payout);
+    }
+
+    /// @notice Legacy function - not needed with Chainlink Functions (scores settle immediately)
+    function settleScore(Quarter quarter) external {
+        // No-op - scores are settled immediately when verified
+    }
+
+    // ============ Chainlink Functions Callback ============
+
+    function handleOracleFulfillment(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) external onlyFunctionsRouter {
+        Quarter quarter = requestIdToQuarter[requestId];
+        Score storage score = scores[quarter];
+
+        if (err.length > 0) {
+            // Error occurred - clear submission so it can be retried
+            score.submitted = false;
+            emit ScoreVerified(quarter, 0, 0, false);
+            return;
+        }
+
+        // Decode response: (patriotsScore << 16) | (seahawksScore << 8) | verified
+        uint256 decoded = abi.decode(response, (uint256));
+        uint8 patriotsScore = uint8(decoded >> 16);
+        uint8 seahawksScore = uint8((decoded >> 8) & 0xFF);
+        bool verified = (decoded & 0xFF) == 1;
+
+        emit ScoreVerified(quarter, patriotsScore, seahawksScore, verified);
+
+        if (!verified) {
+            // No consensus - clear submission so it can be retried
+            score.submitted = false;
+            return;
+        }
+
+        // Score verified by multiple sources - finalize
+        score.teamAScore = patriotsScore;
+        score.teamBScore = seahawksScore;
+        score.settled = true;
+
+        _advanceState(quarter);
+
+        (address winner, uint256 payout) = getWinner(quarter);
+        emit ScoreSettled(quarter, winner, payout);
+    }
+
+    // ============ Internal Functions ============
+
+    function _validateQuarterProgression(Quarter quarter) internal view {
         if (quarter == Quarter.Q1 && state != PoolState.NUMBERS_ASSIGNED) {
             revert InvalidState(state, PoolState.NUMBERS_ASSIGNED);
         }
@@ -269,128 +375,32 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         if (quarter == Quarter.FINAL && state != PoolState.Q3_SCORED) {
             revert InvalidState(state, PoolState.Q3_SCORED);
         }
-
-        Score storage score = scores[quarter];
-        if (score.submitted) revert ScoreAlreadySubmitted();
-
-        // Build claim
-        bytes memory claim = SquaresLib.buildScoreClaim(
-            name,
-            uint8(quarter) + 1,
-            teamAName,
-            teamBName,
-            teamAScore,
-            teamBScore
-        );
-
-        // Transfer bond from submitter
-        IERC20(umaBondToken).transferFrom(msg.sender, address(this), umaBondAmount);
-        IERC20(umaBondToken).approve(address(umaOracle), umaBondAmount);
-
-        // Submit assertion to UMA
-        bytes32 assertionId = umaOracle.assertTruth(
-            claim,
-            msg.sender,
-            address(this), // callback recipient
-            address(0), // sovereign security
-            umaDisputePeriod,
-            umaBondToken,
-            umaBondAmount,
-            umaOracle.defaultIdentifier(),
-            bytes32(0) // domain id
-        );
-
-        score.teamAScore = teamAScore;
-        score.teamBScore = teamBScore;
-        score.submitted = true;
-        score.assertionId = assertionId;
-
-        assertionToQuarter[assertionId] = quarter;
-
-        emit ScoreSubmitted(quarter, teamAScore, teamBScore, assertionId);
     }
 
-    /// @inheritdoc ISquaresPool
-    function settleScore(Quarter quarter) external {
-        Score storage score = scores[quarter];
-        if (!score.submitted) revert ScoreNotSettled();
-        if (score.settled) return; // Already settled
-
-        // Settle on UMA (will revert if not ready)
-        umaOracle.settleAssertion(score.assertionId);
-
-        // Check if assertion was truthful
-        IOptimisticOracleV3.Assertion memory assertion = umaOracle.getAssertion(score.assertionId);
-        if (!assertion.settled) revert AssertionNotSettled();
-
-        if (assertion.settlementResolution) {
-            // Assertion was truthful - finalize score
-            _finalizeScore(quarter);
-        } else {
-            // Assertion was disputed and resolved false - clear submission
-            score.submitted = false;
-            score.teamAScore = 0;
-            score.teamBScore = 0;
-            score.assertionId = bytes32(0);
-        }
-    }
-
-    // ============ UMA Callbacks ============
-
-    /// @notice Called when assertion is resolved
-    function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) external {
-        if (msg.sender != address(umaOracle)) revert OnlyUMAOracle();
-
-        Quarter quarter = assertionToQuarter[assertionId];
-        Score storage score = scores[quarter];
-
-        if (assertedTruthfully) {
-            _finalizeScore(quarter);
-        } else {
-            // Clear the submission so a new one can be made
-            score.submitted = false;
-            score.teamAScore = 0;
-            score.teamBScore = 0;
-            score.assertionId = bytes32(0);
-        }
-    }
-
-    /// @notice Called when assertion is disputed
-    function assertionDisputedCallback(bytes32 assertionId) external {
-        if (msg.sender != address(umaOracle)) revert OnlyUMAOracle();
-        // Dispute is in progress - wait for resolution
-    }
-
-    // ============ Internal Functions ============
-
-    function _finalizeScore(Quarter quarter) internal {
-        Score storage score = scores[quarter];
-        score.settled = true;
-
-        // Update state
+    function _advanceState(Quarter quarter) internal {
         if (quarter == Quarter.Q1) state = PoolState.Q1_SCORED;
         else if (quarter == Quarter.Q2) state = PoolState.Q2_SCORED;
         else if (quarter == Quarter.Q3) state = PoolState.Q3_SCORED;
         else state = PoolState.FINAL_SCORED;
+    }
 
-        // Emit winner event
-        (address winner, uint256 payout) = getWinner(quarter);
-        emit ScoreSettled(quarter, winner, payout);
+    function _quarterToString(Quarter q) internal pure returns (string memory) {
+        if (q == Quarter.Q1) return "1";
+        if (q == Quarter.Q2) return "2";
+        if (q == Quarter.Q3) return "3";
+        return "4";
     }
 
     // ============ View Functions ============
 
-    /// @inheritdoc ISquaresPool
     function getGrid() external view returns (address[100] memory) {
         return grid;
     }
 
-    /// @inheritdoc ISquaresPool
     function getNumbers() external view returns (uint8[10] memory rows, uint8[10] memory cols) {
         return (rowNumbers, colNumbers);
     }
 
-    /// @inheritdoc ISquaresPool
     function getWinner(Quarter quarter) public view returns (address winner, uint256 payout) {
         Score storage score = scores[quarter];
         if (!score.settled) return (address(0), 0);
@@ -406,7 +416,6 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         payout = SquaresLib.calculatePayout(totalPot, payoutPercentages[uint8(quarter)]);
     }
 
-    /// @inheritdoc ISquaresPool
     function getPoolInfo()
         external
         view
@@ -424,19 +433,20 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus, OptimisticOracleV3C
         return (name, state, squarePrice, paymentToken, totalPot, squaresSold, teamAName, teamBName);
     }
 
-    /// @inheritdoc ISquaresPool
     function getScore(Quarter quarter) external view returns (Score memory) {
         return scores[quarter];
     }
 
-    /// @notice Get payout percentages
     function getPayoutPercentages() external view returns (uint8[4] memory) {
         return payoutPercentages;
     }
 
-    /// @notice Check if user has claimed payout for a quarter
     function hasClaimed(address user, Quarter quarter) external view returns (bool) {
         return payoutClaimed[user][quarter];
+    }
+
+    function isPrivate() external view returns (bool) {
+        return passwordHash != bytes32(0);
     }
 
     // ============ Receive ETH ============

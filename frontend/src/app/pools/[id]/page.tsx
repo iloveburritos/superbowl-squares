@@ -23,6 +23,7 @@ import {
   usePoolScore,
   usePoolWinner,
   usePoolOperator,
+  useIsPrivate,
 } from '@/hooks/usePool';
 import { useBuySquares } from '@/hooks/useBuySquares';
 import { useClaimPayout } from '@/hooks/useClaimPayout';
@@ -39,11 +40,12 @@ export default function PoolPage() {
   const { poolInfo, isLoading: infoLoading, refetch: refetchInfo } = usePoolInfo(poolAddress);
   const { grid, isLoading: gridLoading, refetch: refetchGrid } = usePoolGrid(poolAddress);
   const { rowNumbers, colNumbers } = usePoolNumbers(poolAddress);
-  const { purchaseDeadline, vrfDeadline } = usePoolDeadlines(poolAddress);
+  const { purchaseDeadline, revealDeadline } = usePoolDeadlines(poolAddress);
   const { squareCount } = useUserSquareCount(poolAddress, address);
   const { maxSquares } = useMaxSquaresPerUser(poolAddress);
   const { percentages } = usePayoutPercentages(poolAddress);
   const { operator } = usePoolOperator(poolAddress);
+  const { isPrivate } = useIsPrivate(poolAddress);
 
   // Scores
   const { score: q1Score } = usePoolScore(poolAddress, Quarter.Q1);
@@ -59,6 +61,7 @@ export default function PoolPage() {
 
   // State
   const [selectedSquares, setSelectedSquares] = useState<number[]>([]);
+  const [poolPassword, setPoolPassword] = useState('');
 
   // Success toast state
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
@@ -121,9 +124,9 @@ export default function PoolPage() {
   // After approval succeeds, continue with purchase
   useEffect(() => {
     if (isApproveSuccess && selectedSquares.length > 0 && poolInfo?.squarePrice) {
-      continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice);
+      continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice, poolPassword);
     }
-  }, [isApproveSuccess, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval]);
+  }, [isApproveSuccess, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval, poolPassword]);
 
   // Format token amount for display
   const formatAmount = (amount: bigint) => {
@@ -162,7 +165,7 @@ export default function PoolPage() {
   const handleBuy = async () => {
     if (selectedSquares.length === 0 || !poolInfo) return;
 
-    await buySquares(selectedSquares, poolInfo.squarePrice);
+    await buySquares(selectedSquares, poolInfo.squarePrice, poolPassword);
     setSelectedSquares([]);
   };
 
@@ -271,6 +274,15 @@ export default function PoolPage() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 {getStateBadge(poolInfo.state)}
+                {isPrivate && (
+                  <span className="badge bg-[var(--championship-gold)]/20 text-[var(--championship-gold)] border-[var(--championship-gold)]/30 flex items-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    Private
+                  </span>
+                )}
                 {isOperator && (
                   <span className="badge bg-purple-500/20 text-purple-300 border-purple-500/30">
                     Operator
@@ -350,35 +362,58 @@ export default function PoolPage() {
                       <ConnectButton />
                     </div>
                   ) : (
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                      <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--turf-green)]/20 to-[var(--turf-green)]/5 border border-[var(--turf-green)]/30 flex items-center justify-center">
-                          <span className="text-2xl font-bold text-[var(--turf-green)]" style={{ fontFamily: 'var(--font-display)' }}>
-                            {selectedSquares.length}
-                          </span>
+                    <div className="space-y-4">
+                      {/* Password input for private pools */}
+                      {isPrivate && (
+                        <div className="flex items-center gap-4 p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)] shrink-0">
+                            <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium text-[var(--championship-gold)] mb-1">
+                              Pool Password Required
+                            </label>
+                            <input
+                              type="password"
+                              value={poolPassword}
+                              onChange={(e) => setPoolPassword(e.target.value)}
+                              placeholder="Enter pool password"
+                              className="w-full px-3 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] placeholder-[var(--smoke)] focus:outline-none focus:border-[var(--championship-gold)]/50"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-lg font-medium text-[var(--chrome)]">
-                            Squares Selected
-                          </p>
-                          <p className="text-[var(--turf-green)] font-bold text-xl">
-                            {formatAmount(totalCost)} {paymentToken.symbol}
-                          </p>
-                          {remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0 && (
-                            <p className="text-sm text-[var(--smoke)]">
-                              You can buy {remainingSquares} more
+                      )}
+
+                      <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-6">
+                          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--turf-green)]/20 to-[var(--turf-green)]/5 border border-[var(--turf-green)]/30 flex items-center justify-center">
+                            <span className="text-2xl font-bold text-[var(--turf-green)]" style={{ fontFamily: 'var(--font-display)' }}>
+                              {selectedSquares.length}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-lg font-medium text-[var(--chrome)]">
+                              Squares Selected
                             </p>
-                          )}
-                          {!isNativePayment && needsApproval(totalCost) && selectedSquares.length > 0 && (
-                            <p className="text-xs text-blue-400 mt-1">
-                              Requires {paymentToken.symbol} approval
+                            <p className="text-[var(--turf-green)] font-bold text-xl">
+                              {formatAmount(totalCost)} {paymentToken.symbol}
                             </p>
-                          )}
+                            {remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0 && (
+                              <p className="text-sm text-[var(--smoke)]">
+                                You can buy {remainingSquares} more
+                              </p>
+                            )}
+                            {!isNativePayment && needsApproval(totalCost) && selectedSquares.length > 0 && (
+                              <p className="text-xs text-blue-400 mt-1">
+                                Requires {paymentToken.symbol} approval
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
                       <button
                         onClick={handleBuy}
-                        disabled={selectedSquares.length === 0 || isBuying || isConfirmingBuy}
+                        disabled={selectedSquares.length === 0 || isBuying || isConfirmingBuy || (isPrivate && !poolPassword)}
                         className="btn-primary px-8 py-4 text-lg disabled:opacity-40"
                       >
                         {buyStep === 'approving' && isBuying ? (
@@ -420,6 +455,7 @@ export default function PoolPage() {
                           </span>
                         )}
                       </button>
+                      </div>
                     </div>
                   )}
                   {buyError && (
@@ -532,9 +568,9 @@ export default function PoolPage() {
                 </div>
                 <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
                   <dt className="text-xs text-[var(--smoke)] mb-1" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
-                    VRF DEADLINE
+                    REVEAL DEADLINE
                   </dt>
-                  <dd className="font-medium text-[var(--chrome)]">{formatDeadline(vrfDeadline)}</dd>
+                  <dd className="font-medium text-[var(--chrome)]">{formatDeadline(revealDeadline)}</dd>
                 </div>
               </dl>
             </div>

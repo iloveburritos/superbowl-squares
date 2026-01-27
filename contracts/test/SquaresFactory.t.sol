@@ -5,28 +5,26 @@ import {Test, console} from "forge-std/Test.sol";
 import {SquaresFactory} from "../src/SquaresFactory.sol";
 import {SquaresPool} from "../src/SquaresPool.sol";
 import {ISquaresPool} from "../src/interfaces/ISquaresPool.sol";
-import {MockVRFCoordinator} from "./mocks/MockVRFCoordinator.sol";
-import {MockUMAOracle} from "./mocks/MockUMAOracle.sol";
+import {MockFunctionsRouter} from "./mocks/MockFunctionsRouter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract SquaresFactoryTest is Test {
     SquaresFactory public factory;
-    MockVRFCoordinator public vrfCoordinator;
-    MockUMAOracle public umaOracle;
-    MockERC20 public bondToken;
+    MockFunctionsRouter public functionsRouter;
 
     address public alice = address(0x1);
     address public bob = address(0x2);
 
+    uint64 constant SUBSCRIPTION_ID = 1;
+    bytes32 constant DON_ID = bytes32("fun-ethereum-sepolia-1");
+
     function setUp() public {
-        vrfCoordinator = new MockVRFCoordinator();
-        umaOracle = new MockUMAOracle();
-        bondToken = new MockERC20("USD Coin", "USDC", 6);
+        functionsRouter = new MockFunctionsRouter();
 
         factory = new SquaresFactory(
-            address(vrfCoordinator),
-            address(umaOracle),
-            address(bondToken)
+            address(functionsRouter),
+            SUBSCRIPTION_ID,
+            DON_ID
         );
     }
 
@@ -169,9 +167,68 @@ contract SquaresFactoryTest is Test {
     }
 
     function test_ImmutableAddresses() public view {
-        assertEq(factory.vrfCoordinator(), address(vrfCoordinator));
-        assertEq(factory.umaOracle(), address(umaOracle));
-        assertEq(factory.umaBondToken(), address(bondToken));
+        assertEq(factory.functionsRouter(), address(functionsRouter));
+        assertEq(factory.defaultFunctionsSubscriptionId(), SUBSCRIPTION_ID);
+        assertEq(factory.defaultFunctionsDonId(), DON_ID);
+    }
+
+    function test_AdminFunctions() public {
+        // Check initial admin
+        assertEq(factory.admin(), address(this));
+
+        // Set Functions source
+        string memory source = "return Functions.encodeUint256(42);";
+        factory.setDefaultFunctionsSource(source);
+        assertEq(factory.defaultFunctionsSource(), source);
+
+        // Update subscription
+        factory.setFunctionsSubscription(123);
+        assertEq(factory.defaultFunctionsSubscriptionId(), 123);
+
+        // Update DON ID
+        bytes32 newDonId = bytes32("new-don-id");
+        factory.setFunctionsDonId(newDonId);
+        assertEq(factory.defaultFunctionsDonId(), newDonId);
+
+        // Transfer admin
+        factory.transferAdmin(alice);
+        assertEq(factory.admin(), alice);
+    }
+
+    function test_OnlyAdminCanCallAdminFunctions() public {
+        vm.prank(alice);
+        vm.expectRevert(SquaresFactory.OnlyAdmin.selector);
+        factory.setDefaultFunctionsSource("test");
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresFactory.OnlyAdmin.selector);
+        factory.setFunctionsSubscription(123);
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresFactory.OnlyAdmin.selector);
+        factory.setFunctionsDonId(bytes32("test"));
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresFactory.OnlyAdmin.selector);
+        factory.transferAdmin(bob);
+    }
+
+    function test_CreatePool_SetsChainlinkFunctionsConfig() public {
+        // Set a functions source
+        string memory source = "return Functions.encodeUint256(42);";
+        factory.setDefaultFunctionsSource(source);
+
+        ISquaresPool.PoolParams memory params = _getDefaultParams();
+
+        vm.prank(alice);
+        address poolAddr = factory.createPool(params);
+
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        // Check that Chainlink Functions config was set
+        assertEq(pool.functionsSubscriptionId(), SUBSCRIPTION_ID);
+        assertEq(pool.functionsDonId(), DON_ID);
+        assertEq(pool.functionsSource(), source);
     }
 
     function _getDefaultParams() internal view returns (ISquaresPool.PoolParams memory) {
@@ -184,11 +241,8 @@ contract SquaresFactoryTest is Test {
             teamAName: "Team A",
             teamBName: "Team B",
             purchaseDeadline: block.timestamp + 7 days,
-            vrfDeadline: block.timestamp + 8 days,
-            vrfSubscriptionId: 1,
-            vrfKeyHash: bytes32(0),
-            umaDisputePeriod: 2 hours,
-            umaBondAmount: 100e6
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: bytes32(0) // Public pool
         });
     }
 }

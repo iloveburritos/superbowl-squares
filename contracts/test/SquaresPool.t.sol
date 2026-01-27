@@ -5,16 +5,13 @@ import {Test, console} from "forge-std/Test.sol";
 import {SquaresPool} from "../src/SquaresPool.sol";
 import {SquaresFactory} from "../src/SquaresFactory.sol";
 import {ISquaresPool} from "../src/interfaces/ISquaresPool.sol";
-import {MockVRFCoordinator} from "./mocks/MockVRFCoordinator.sol";
-import {MockUMAOracle} from "./mocks/MockUMAOracle.sol";
+import {MockFunctionsRouter} from "./mocks/MockFunctionsRouter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract SquaresPoolTest is Test {
     SquaresFactory public factory;
     SquaresPool public pool;
-    MockVRFCoordinator public vrfCoordinator;
-    MockUMAOracle public umaOracle;
-    MockERC20 public bondToken;
+    MockFunctionsRouter public functionsRouter;
     MockERC20 public paymentToken;
 
     address public operator = address(0x1);
@@ -23,37 +20,31 @@ contract SquaresPoolTest is Test {
     address public charlie = address(0x4);
 
     uint256 public constant SQUARE_PRICE = 0.1 ether;
-    uint256 public constant BOND_AMOUNT = 100e6; // 100 USDC
 
     function setUp() public {
         // Deploy mocks
-        vrfCoordinator = new MockVRFCoordinator();
-        umaOracle = new MockUMAOracle();
-        bondToken = new MockERC20("USD Coin", "USDC", 6);
+        functionsRouter = new MockFunctionsRouter();
         paymentToken = new MockERC20("Test Token", "TEST", 18);
 
-        // Deploy factory
+        // Deploy factory with Chainlink Functions config
         factory = new SquaresFactory(
-            address(vrfCoordinator),
-            address(umaOracle),
-            address(bondToken)
+            address(functionsRouter),
+            1, // subscriptionId
+            bytes32("test-don-id")
         );
 
         // Create pool with ETH payments
         ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
-            name: "Super Bowl LVIII",
+            name: "Super Bowl LX",
             squarePrice: SQUARE_PRICE,
             paymentToken: address(0), // ETH
             maxSquaresPerUser: 10,
             payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
-            teamAName: "Chiefs",
-            teamBName: "49ers",
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            vrfDeadline: block.timestamp + 8 days,
-            vrfSubscriptionId: 1,
-            vrfKeyHash: bytes32(0),
-            umaDisputePeriod: 2 hours,
-            umaBondAmount: BOND_AMOUNT
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: bytes32(0) // Public pool
         });
 
         vm.prank(operator);
@@ -64,15 +55,6 @@ contract SquaresPoolTest is Test {
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
         vm.deal(charlie, 100 ether);
-
-        // Mint bond tokens for score submissions
-        bondToken.mint(alice, 1000e6);
-        bondToken.mint(bob, 1000e6);
-
-        vm.prank(alice);
-        bondToken.approve(address(pool), type(uint256).max);
-        vm.prank(bob);
-        bondToken.approve(address(pool), type(uint256).max);
     }
 
     // ============ Pool Creation Tests ============
@@ -89,14 +71,14 @@ contract SquaresPoolTest is Test {
             string memory teamBName
         ) = pool.getPoolInfo();
 
-        assertEq(name, "Super Bowl LVIII");
+        assertEq(name, "Super Bowl LX");
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.OPEN));
         assertEq(squarePrice, SQUARE_PRICE);
         assertEq(token, address(0));
         assertEq(totalPot, 0);
         assertEq(squaresSold, 0);
-        assertEq(teamAName, "Chiefs");
-        assertEq(teamBName, "49ers");
+        assertEq(teamAName, "Patriots");
+        assertEq(teamBName, "Seahawks");
     }
 
     // ============ Square Purchase Tests ============
@@ -108,7 +90,7 @@ contract SquaresPoolTest is Test {
         positions[2] = 99;
 
         vm.prank(alice);
-        pool.buySquares{value: 0.3 ether}(positions);
+        pool.buySquares{value: 0.3 ether}(positions, "");
 
         address[100] memory grid = pool.getGrid();
         assertEq(grid[0], alice);
@@ -127,7 +109,7 @@ contract SquaresPoolTest is Test {
         uint256 balanceBefore = alice.balance;
 
         vm.prank(alice);
-        pool.buySquares{value: 1 ether}(positions);
+        pool.buySquares{value: 1 ether}(positions, "");
 
         uint256 balanceAfter = alice.balance;
         assertEq(balanceBefore - balanceAfter, SQUARE_PRICE);
@@ -138,11 +120,11 @@ contract SquaresPoolTest is Test {
         positions[0] = 50;
 
         vm.prank(alice);
-        pool.buySquares{value: SQUARE_PRICE}(positions);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
 
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(SquaresPool.SquareAlreadyOwned.selector, 50));
-        pool.buySquares{value: SQUARE_PRICE}(positions);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
     }
 
     function test_BuySquares_RevertIfInvalidPosition() public {
@@ -151,7 +133,7 @@ contract SquaresPoolTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(SquaresPool.InvalidPosition.selector, 100));
-        pool.buySquares{value: SQUARE_PRICE}(positions);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
     }
 
     function test_BuySquares_RevertIfMaxExceeded() public {
@@ -162,7 +144,7 @@ contract SquaresPoolTest is Test {
         }
 
         vm.prank(alice);
-        pool.buySquares{value: 1 ether}(positions);
+        pool.buySquares{value: 1 ether}(positions, "");
 
         // Try to buy one more
         uint8[] memory extraPosition = new uint8[](1);
@@ -170,7 +152,7 @@ contract SquaresPoolTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(SquaresPool.MaxSquaresExceeded.selector, alice, 10, 10));
-        pool.buySquares{value: SQUARE_PRICE}(extraPosition);
+        pool.buySquares{value: SQUARE_PRICE}(extraPosition, "");
     }
 
     function test_BuySquares_RevertIfInsufficientPayment() public {
@@ -180,7 +162,7 @@ contract SquaresPoolTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(SquaresPool.InsufficientPayment.selector, 0.1 ether, 0.2 ether));
-        pool.buySquares{value: 0.1 ether}(positions);
+        pool.buySquares{value: 0.1 ether}(positions, "");
     }
 
     function test_BuySquares_RevertAfterDeadline() public {
@@ -191,7 +173,7 @@ contract SquaresPoolTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(SquaresPool.PurchaseDeadlinePassed.selector);
-        pool.buySquares{value: SQUARE_PRICE}(positions);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
     }
 
     // ============ Pool Close Tests ============
@@ -225,32 +207,37 @@ contract SquaresPoolTest is Test {
         pool.closePool();
     }
 
-    // ============ VRF Tests ============
+    // ============ Commit-Reveal Tests ============
 
-    function test_RequestRandomNumbers() public {
+    function test_CommitRandomness() public {
         vm.prank(operator);
         pool.closePool();
 
-        vm.prank(operator);
-        uint256 requestId = pool.requestRandomNumbers();
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
 
-        assertEq(requestId, 1);
-        assertEq(pool.vrfRequestId(), 1);
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        assertEq(pool.commitment(), commitment);
+        assertEq(pool.commitBlock(), block.number);
     }
 
-    function test_FulfillRandomWords() public {
+    function test_RevealRandomness() public {
         vm.prank(operator);
         pool.closePool();
 
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
+
         vm.prank(operator);
-        uint256 requestId = pool.requestRandomNumbers();
+        pool.commitRandomness(commitment);
 
-        // Fulfill with random numbers
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 12345;
-        randomWords[1] = 67890;
+        // Mine a block to allow reveal
+        vm.roll(block.number + 1);
 
-        vrfCoordinator.fulfillRandomWords(requestId, randomWords);
+        vm.prank(operator);
+        pool.revealRandomness(seed);
 
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
@@ -276,39 +263,125 @@ contract SquaresPoolTest is Test {
         }
     }
 
+    function test_RevealTooEarly() public {
+        vm.prank(operator);
+        pool.closePool();
+
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
+
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // Try to reveal in same block (should fail)
+        vm.prank(operator);
+        vm.expectRevert(SquaresPool.RevealTooEarly.selector);
+        pool.revealRandomness(seed);
+    }
+
+    function test_RevealTooLate() public {
+        vm.prank(operator);
+        pool.closePool();
+
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
+
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // Skip 257 blocks (blockhash returns 0 for blocks older than 256)
+        vm.roll(block.number + 257);
+
+        vm.prank(operator);
+        vm.expectRevert(SquaresPool.RevealTooLate.selector);
+        pool.revealRandomness(seed);
+    }
+
+    function test_InvalidReveal() public {
+        vm.prank(operator);
+        pool.closePool();
+
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
+
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // Mine a block
+        vm.roll(block.number + 1);
+
+        // Try to reveal with wrong seed
+        vm.prank(operator);
+        vm.expectRevert(SquaresPool.InvalidReveal.selector);
+        pool.revealRandomness(99999);
+    }
+
+    function test_AlreadyCommitted() public {
+        vm.prank(operator);
+        pool.closePool();
+
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
+
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // Try to commit again
+        vm.prank(operator);
+        vm.expectRevert(SquaresPool.AlreadyCommitted.selector);
+        pool.commitRandomness(commitment);
+    }
+
+    function test_NotCommitted() public {
+        vm.prank(operator);
+        pool.closePool();
+
+        // Try to reveal without committing first
+        vm.prank(operator);
+        vm.expectRevert(SquaresPool.NotCommitted.selector);
+        pool.revealRandomness(12345);
+    }
+
     // ============ Score Submission Tests ============
 
-    function test_SubmitScore() public {
+    function test_SubmitScore_OperatorFallback() public {
         _setupForScoring();
 
-        vm.prank(alice);
+        // Operator can manually submit scores as fallback
+        vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
 
         ISquaresPool.Score memory score = pool.getScore(ISquaresPool.Quarter.Q1);
         assertTrue(score.submitted);
+        assertTrue(score.settled);
         assertEq(score.teamAScore, 7);
         assertEq(score.teamBScore, 3);
-    }
-
-    function test_SettleScore() public {
-        _setupForScoring();
-
-        vm.prank(alice);
-        pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
-
-        // Fast forward past dispute period
-        vm.warp(block.timestamp + 3 hours);
-
-        ISquaresPool.Score memory scoreBefore = pool.getScore(ISquaresPool.Quarter.Q1);
-        umaOracle.setAssertionExpired(scoreBefore.assertionId);
-
-        pool.settleScore(ISquaresPool.Quarter.Q1);
 
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.Q1_SCORED));
+    }
 
-        ISquaresPool.Score memory scoreAfter = pool.getScore(ISquaresPool.Quarter.Q1);
-        assertTrue(scoreAfter.settled);
+    function test_SubmitScore_RevertIfNotOperator() public {
+        _setupForScoring();
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresPool.OnlyOperator.selector);
+        pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
+    }
+
+    function test_SubmitScore_RevertIfInvalidQuarterProgression() public {
+        _setupForScoring();
+
+        // Can't submit Q2 before Q1
+        vm.prank(operator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SquaresPool.InvalidState.selector,
+                ISquaresPool.PoolState.NUMBERS_ASSIGNED,
+                ISquaresPool.PoolState.Q1_SCORED
+            )
+        );
+        pool.submitScore(ISquaresPool.Quarter.Q2, 14, 7);
     }
 
     // ============ Payout Tests ============
@@ -318,14 +391,9 @@ contract SquaresPoolTest is Test {
         _buyAllSquaresWithAlice();
         _setupForScoring();
 
-        // Submit and settle Q1 score
-        vm.prank(alice);
+        // Submit Q1 score via operator
+        vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
-
-        vm.warp(block.timestamp + 3 hours);
-        ISquaresPool.Score memory score = pool.getScore(ISquaresPool.Quarter.Q1);
-        umaOracle.setAssertionExpired(score.assertionId);
-        pool.settleScore(ISquaresPool.Quarter.Q1);
 
         // Check winner
         (address winner, uint256 payout) = pool.getWinner(ISquaresPool.Quarter.Q1);
@@ -348,13 +416,8 @@ contract SquaresPoolTest is Test {
         _buyAllSquaresWithAlice();
         _setupForScoring();
 
-        vm.prank(alice);
+        vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
-
-        vm.warp(block.timestamp + 3 hours);
-        ISquaresPool.Score memory score = pool.getScore(ISquaresPool.Quarter.Q1);
-        umaOracle.setAssertionExpired(score.assertionId);
-        pool.settleScore(ISquaresPool.Quarter.Q1);
 
         vm.prank(bob);
         vm.expectRevert(SquaresPool.NotWinner.selector);
@@ -365,13 +428,8 @@ contract SquaresPoolTest is Test {
         _buyAllSquaresWithAlice();
         _setupForScoring();
 
-        vm.prank(alice);
+        vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
-
-        vm.warp(block.timestamp + 3 hours);
-        ISquaresPool.Score memory score = pool.getScore(ISquaresPool.Quarter.Q1);
-        umaOracle.setAssertionExpired(score.assertionId);
-        pool.settleScore(ISquaresPool.Quarter.Q1);
 
         vm.prank(alice);
         pool.claimPayout(ISquaresPool.Quarter.Q1);
@@ -393,7 +451,7 @@ contract SquaresPoolTest is Test {
         aliceSquares[4] = 44;
 
         vm.prank(alice);
-        pool.buySquares{value: 0.5 ether}(aliceSquares);
+        pool.buySquares{value: 0.5 ether}(aliceSquares, "");
 
         uint8[] memory bobSquares = new uint8[](5);
         bobSquares[0] = 55;
@@ -403,24 +461,43 @@ contract SquaresPoolTest is Test {
         bobSquares[4] = 99;
 
         vm.prank(bob);
-        pool.buySquares{value: 0.5 ether}(bobSquares);
+        pool.buySquares{value: 0.5 ether}(bobSquares, "");
 
-        // 2. Close pool and request random numbers
+        // 2. Close pool and commit randomness
         vm.prank(operator);
         pool.closePool();
 
-        vm.prank(operator);
-        uint256 requestId = pool.requestRandomNumbers();
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
 
-        // 3. Fulfill VRF
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 12345;
-        randomWords[1] = 67890;
-        vrfCoordinator.fulfillRandomWords(requestId, randomWords);
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // 3. Mine a block and reveal randomness
+        vm.roll(block.number + 1);
+
+        vm.prank(operator);
+        pool.revealRandomness(seed);
 
         // 4. Game is ready for scoring
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+
+        // 5. Submit scores for all quarters
+        vm.prank(operator);
+        pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
+
+        vm.prank(operator);
+        pool.submitScore(ISquaresPool.Quarter.Q2, 14, 10);
+
+        vm.prank(operator);
+        pool.submitScore(ISquaresPool.Quarter.Q3, 21, 17);
+
+        vm.prank(operator);
+        pool.submitScore(ISquaresPool.Quarter.FINAL, 28, 24);
+
+        (, state, , , , , ,) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.FINAL_SCORED));
     }
 
     // ============ ERC20 Payment Tests ============
@@ -436,11 +513,8 @@ contract SquaresPoolTest is Test {
             teamAName: "Team A",
             teamBName: "Team B",
             purchaseDeadline: block.timestamp + 7 days,
-            vrfDeadline: block.timestamp + 8 days,
-            vrfSubscriptionId: 1,
-            vrfKeyHash: bytes32(0),
-            umaDisputePeriod: 2 hours,
-            umaBondAmount: BOND_AMOUNT
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: bytes32(0) // Public pool
         });
 
         vm.prank(operator);
@@ -458,7 +532,7 @@ contract SquaresPoolTest is Test {
         positions[1] = 1;
 
         vm.prank(alice);
-        erc20Pool.buySquares(positions);
+        erc20Pool.buySquares(positions, "");
 
         (, , , , uint256 totalPot, uint256 squaresSold, ,) = erc20Pool.getPoolInfo();
         assertEq(totalPot, 200e18);
@@ -471,40 +545,37 @@ contract SquaresPoolTest is Test {
         vm.prank(operator);
         pool.closePool();
 
-        vm.prank(operator);
-        uint256 requestId = pool.requestRandomNumbers();
+        uint256 seed = 12345;
+        bytes32 commitment = keccak256(abi.encodePacked(seed));
 
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 12345;
-        randomWords[1] = 67890;
-        vrfCoordinator.fulfillRandomWords(requestId, randomWords);
+        vm.prank(operator);
+        pool.commitRandomness(commitment);
+
+        // Mine a block to allow reveal
+        vm.roll(block.number + 1);
+
+        vm.prank(operator);
+        pool.revealRandomness(seed);
     }
 
     function _buyAllSquaresWithAlice() internal {
-        // Buy squares in batches of 10 to respect maxSquaresPerUser
-        // First, create a pool without the limit
+        // Create a pool without the limit
         ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
             name: "Unlimited Pool",
             squarePrice: SQUARE_PRICE,
             paymentToken: address(0),
             maxSquaresPerUser: 0, // No limit
             payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
-            teamAName: "Chiefs",
-            teamBName: "49ers",
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            vrfDeadline: block.timestamp + 8 days,
-            vrfSubscriptionId: 1,
-            vrfKeyHash: bytes32(0),
-            umaDisputePeriod: 2 hours,
-            umaBondAmount: BOND_AMOUNT
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: bytes32(0) // Public pool
         });
 
         vm.prank(operator);
         address poolAddr = factory.createPool(params);
         pool = SquaresPool(payable(poolAddr));
-
-        vm.prank(alice);
-        bondToken.approve(address(pool), type(uint256).max);
 
         // Buy all 100 squares
         uint8[] memory positions = new uint8[](100);
@@ -513,6 +584,110 @@ contract SquaresPoolTest is Test {
         }
 
         vm.prank(alice);
-        pool.buySquares{value: 10 ether}(positions);
+        pool.buySquares{value: 10 ether}(positions, "");
+    }
+
+    // ============ Private Pool Password Tests ============
+
+    function test_PrivatePool_BuyWithCorrectPassword() public {
+        // Create a private pool
+        string memory password = "secret123";
+        bytes32 pwHash = keccak256(bytes(password));
+
+        ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
+            name: "Private Pool",
+            squarePrice: SQUARE_PRICE,
+            paymentToken: address(0),
+            maxSquaresPerUser: 10,
+            payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
+            purchaseDeadline: block.timestamp + 7 days,
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: pwHash
+        });
+
+        vm.prank(operator);
+        address poolAddr = factory.createPool(params);
+        SquaresPool privatePool = SquaresPool(payable(poolAddr));
+
+        // Verify pool is private
+        assertTrue(privatePool.isPrivate());
+
+        // Buy with correct password
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+
+        vm.prank(alice);
+        privatePool.buySquares{value: SQUARE_PRICE}(positions, password);
+
+        address[100] memory grid = privatePool.getGrid();
+        assertEq(grid[0], alice);
+    }
+
+    function test_PrivatePool_RevertWithWrongPassword() public {
+        // Create a private pool
+        string memory password = "secret123";
+        bytes32 pwHash = keccak256(bytes(password));
+
+        ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
+            name: "Private Pool",
+            squarePrice: SQUARE_PRICE,
+            paymentToken: address(0),
+            maxSquaresPerUser: 10,
+            payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
+            purchaseDeadline: block.timestamp + 7 days,
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: pwHash
+        });
+
+        vm.prank(operator);
+        address poolAddr = factory.createPool(params);
+        SquaresPool privatePool = SquaresPool(payable(poolAddr));
+
+        // Try to buy with wrong password
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresPool.InvalidPassword.selector);
+        privatePool.buySquares{value: SQUARE_PRICE}(positions, "wrongpassword");
+    }
+
+    function test_PrivatePool_RevertWithEmptyPassword() public {
+        // Create a private pool
+        string memory password = "secret123";
+        bytes32 pwHash = keccak256(bytes(password));
+
+        ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
+            name: "Private Pool",
+            squarePrice: SQUARE_PRICE,
+            paymentToken: address(0),
+            maxSquaresPerUser: 10,
+            payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
+            purchaseDeadline: block.timestamp + 7 days,
+            revealDeadline: block.timestamp + 8 days,
+            passwordHash: pwHash
+        });
+
+        vm.prank(operator);
+        address poolAddr = factory.createPool(params);
+        SquaresPool privatePool = SquaresPool(payable(poolAddr));
+
+        // Try to buy with empty password
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+
+        vm.prank(alice);
+        vm.expectRevert(SquaresPool.InvalidPassword.selector);
+        privatePool.buySquares{value: SQUARE_PRICE}(positions, "");
+    }
+
+    function test_PublicPool_IsNotPrivate() public view {
+        assertFalse(pool.isPrivate());
     }
 }

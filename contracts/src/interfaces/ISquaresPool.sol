@@ -5,8 +5,8 @@ interface ISquaresPool {
     // Enums
     enum PoolState {
         OPEN,           // Squares can be purchased
-        CLOSED,         // No more purchases, awaiting VRF
-        NUMBERS_ASSIGNED, // VRF complete, game in progress
+        CLOSED,         // No more purchases, awaiting randomness reveal
+        NUMBERS_ASSIGNED, // Randomness revealed, game in progress
         Q1_SCORED,      // Quarter 1 score settled
         Q2_SCORED,      // Quarter 2 score settled
         Q3_SCORED,      // Quarter 3 score settled
@@ -30,11 +30,8 @@ interface ISquaresPool {
         string teamAName;
         string teamBName;
         uint256 purchaseDeadline;
-        uint256 vrfDeadline;
-        uint64 vrfSubscriptionId;
-        bytes32 vrfKeyHash;
-        uint256 umaDisputePeriod;
-        uint256 umaBondAmount;
+        uint256 revealDeadline;
+        bytes32 passwordHash;       // keccak256(password) for private pools, bytes32(0) for public
     }
 
     struct Score {
@@ -42,26 +39,32 @@ interface ISquaresPool {
         uint8 teamBScore;
         bool submitted;
         bool settled;
-        bytes32 assertionId;
+        bytes32 requestId;  // Chainlink Functions request ID
     }
 
     // Events
     event SquarePurchased(address indexed buyer, uint8 indexed position, uint256 price);
     event PoolClosed(uint256 timestamp);
+    event RandomnessCommitted(bytes32 commitment, uint256 commitBlock);
+    event RandomnessRevealed(uint256 seed, bytes32 blockhash_);
     event NumbersAssigned(uint8[10] rowNumbers, uint8[10] colNumbers);
-    event ScoreSubmitted(Quarter indexed quarter, uint8 teamAScore, uint8 teamBScore, bytes32 assertionId);
+    event ScoreFetchRequested(Quarter indexed quarter, bytes32 requestId);
+    event ScoreVerified(Quarter indexed quarter, uint8 teamAScore, uint8 teamBScore, bool verified);
+    event ScoreSubmitted(Quarter indexed quarter, uint8 teamAScore, uint8 teamBScore, bytes32 requestId);
     event ScoreSettled(Quarter indexed quarter, address winner, uint256 payout);
     event PayoutClaimed(address indexed winner, Quarter indexed quarter, uint256 amount);
 
     // Player functions
-    function buySquares(uint8[] calldata positions) external payable;
+    function buySquares(uint8[] calldata positions, string calldata password) external payable;
     function claimPayout(Quarter quarter) external;
 
     // Operator functions
     function closePool() external;
-    function requestRandomNumbers() external returns (uint256 requestId);
+    function commitRandomness(bytes32 _commitment) external;
+    function revealRandomness(uint256 seed) external;
 
-    // Oracle functions
+    // Score functions (Chainlink Functions)
+    function fetchScore(Quarter quarter) external returns (bytes32 requestId);
     function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external;
     function settleScore(Quarter quarter) external;
 

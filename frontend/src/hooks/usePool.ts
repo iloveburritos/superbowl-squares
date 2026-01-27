@@ -83,7 +83,7 @@ export function usePoolScore(poolAddress: `0x${string}` | undefined, quarter: Qu
         teamBScore: (data as any).teamBScore,
         submitted: (data as any).submitted,
         settled: (data as any).settled,
-        assertionId: (data as any).assertionId,
+        requestId: (data as any).requestId,
       }
     : undefined;
 
@@ -134,7 +134,7 @@ export function usePoolDeadlines(poolAddress: `0x${string}` | undefined) {
       {
         address: poolAddress,
         abi: SquaresPoolABI,
-        functionName: 'vrfDeadline',
+        functionName: 'revealDeadline',
       },
     ],
     query: {
@@ -144,7 +144,7 @@ export function usePoolDeadlines(poolAddress: `0x${string}` | undefined) {
 
   return {
     purchaseDeadline: data?.[0]?.result as bigint | undefined,
-    vrfDeadline: data?.[1]?.result as bigint | undefined,
+    revealDeadline: data?.[1]?.result as bigint | undefined,
     isLoading,
     error,
   };
@@ -178,6 +178,32 @@ export function useMaxSquaresPerUser(poolAddress: `0x${string}` | undefined) {
   });
 
   return { maxSquares: data as number | undefined, isLoading, error };
+}
+
+export function useIsPrivate(poolAddress: `0x${string}` | undefined) {
+  const { data, isLoading, error } = useReadContract({
+    address: poolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'isPrivate',
+    query: {
+      enabled: !!poolAddress,
+    },
+  });
+
+  return { isPrivate: data as boolean | undefined, isLoading, error };
+}
+
+export function usePasswordHash(poolAddress: `0x${string}` | undefined) {
+  const { data, isLoading, error } = useReadContract({
+    address: poolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'passwordHash',
+    query: {
+      enabled: !!poolAddress,
+    },
+  });
+
+  return { passwordHash: data as `0x${string}` | undefined, isLoading, error };
 }
 
 export function usePayoutPercentages(poolAddress: `0x${string}` | undefined) {

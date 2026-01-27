@@ -3,7 +3,10 @@ export const SquaresPoolABI = [
   {
     type: 'function',
     name: 'buySquares',
-    inputs: [{ name: 'positions', type: 'uint8[]' }],
+    inputs: [
+      { name: 'positions', type: 'uint8[]' },
+      { name: 'password', type: 'string' },
+    ],
     outputs: [],
     stateMutability: 'payable',
   },
@@ -25,9 +28,16 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
-    name: 'requestRandomNumbers',
-    inputs: [],
-    outputs: [{ name: 'requestId', type: 'uint256' }],
+    name: 'commitRandomness',
+    inputs: [{ name: '_commitment', type: 'bytes32' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'revealRandomness',
+    inputs: [{ name: 'seed', type: 'uint256' }],
+    outputs: [],
     stateMutability: 'nonpayable',
   },
 
@@ -114,7 +124,7 @@ export const SquaresPoolABI = [
           { name: 'teamBScore', type: 'uint8' },
           { name: 'submitted', type: 'bool' },
           { name: 'settled', type: 'bool' },
-          { name: 'assertionId', type: 'bytes32' },
+          { name: 'requestId', type: 'bytes32' },
         ],
       },
     ],
@@ -160,7 +170,21 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
-    name: 'vrfDeadline',
+    name: 'revealDeadline',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'commitment',
+    inputs: [],
+    outputs: [{ type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'commitBlock',
     inputs: [],
     outputs: [{ type: 'uint256' }],
     stateMutability: 'view',
@@ -177,6 +201,20 @@ export const SquaresPoolABI = [
     name: 'maxSquaresPerUser',
     inputs: [],
     outputs: [{ type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'passwordHash',
+    inputs: [],
+    outputs: [{ type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'isPrivate',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
     stateMutability: 'view',
   },
 
@@ -197,6 +235,22 @@ export const SquaresPoolABI = [
   },
   {
     type: 'event',
+    name: 'RandomnessCommitted',
+    inputs: [
+      { name: 'commitment', type: 'bytes32', indexed: false },
+      { name: 'commitBlock', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'RandomnessRevealed',
+    inputs: [
+      { name: 'seed', type: 'uint256', indexed: false },
+      { name: 'blockhash_', type: 'bytes32', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
     name: 'NumbersAssigned',
     inputs: [
       { name: 'rowNumbers', type: 'uint8[10]', indexed: false },
@@ -210,7 +264,7 @@ export const SquaresPoolABI = [
       { name: 'quarter', type: 'uint8', indexed: true },
       { name: 'teamAScore', type: 'uint8', indexed: false },
       { name: 'teamBScore', type: 'uint8', indexed: false },
-      { name: 'assertionId', type: 'bytes32', indexed: false },
+      { name: 'requestId', type: 'bytes32', indexed: false },
     ],
   },
   {

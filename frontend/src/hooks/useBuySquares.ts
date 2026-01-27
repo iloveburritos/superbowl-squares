@@ -106,7 +106,7 @@ export function useBuySquares(
   };
 
   // Buy squares
-  const buySquares = async (positions: number[], squarePrice: bigint) => {
+  const buySquares = async (positions: number[], squarePrice: bigint, password: string = '') => {
     if (!poolAddress) return;
 
     const totalValue = squarePrice * BigInt(positions.length);
@@ -131,13 +131,13 @@ export function useBuySquares(
       address: poolAddress,
       abi: SquaresPoolABI,
       functionName: 'buySquares',
-      args: [positions.map((p) => p)],
+      args: [positions.map((p) => p), password],
       value: isNativePayment ? totalValue : BigInt(0),
     });
   };
 
   // Continue buying after approval
-  const continueBuyAfterApproval = async (positions: number[], squarePrice: bigint) => {
+  const continueBuyAfterApproval = async (positions: number[], squarePrice: bigint, password: string = '') => {
     if (!poolAddress) return;
 
     const totalValue = squarePrice * BigInt(positions.length);
@@ -148,7 +148,7 @@ export function useBuySquares(
       address: poolAddress,
       abi: SquaresPoolABI,
       functionName: 'buySquares',
-      args: [positions.map((p) => p)],
+      args: [positions.map((p) => p), password],
       value: isNativePayment ? totalValue : BigInt(0),
     });
   };
