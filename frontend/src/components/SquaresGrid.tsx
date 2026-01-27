@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { formatEther } from 'viem';
 import { PoolState } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo } from './Logos';
+import { Token, formatTokenAmount, isNativeToken } from '@/config/tokens';
 
 interface SquaresGridProps {
   grid: `0x${string}`[];
@@ -18,6 +19,7 @@ interface SquaresGridProps {
   onSquareSelect?: (position: number) => void;
   winningPosition?: number;
   isInteractive?: boolean;
+  token?: Token;
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -42,9 +44,18 @@ export function SquaresGrid({
   onSquareSelect,
   winningPosition,
   isInteractive = true,
+  token,
 }: SquaresGridProps) {
   const { address } = useAccount();
   const [hoveredSquare, setHoveredSquare] = useState<number | null>(null);
+
+  const tokenSymbol = token?.symbol || 'ETH';
+  const formatAmount = (amount: bigint) => {
+    if (!token || isNativeToken(token)) {
+      return formatEther(amount);
+    }
+    return formatTokenAmount(amount, token.decimals);
+  };
 
   const numbersAssigned = rowNumbers && colNumbers && rowNumbers.some((n) => n !== 0);
   const showTeamLogos = isPatriotsVsSeahawks(teamAName, teamBName);
@@ -203,7 +214,7 @@ export function SquaresGrid({
                           title={
                             isOwned
                               ? `Owned by ${truncateAddress(owner)}`
-                              : `Square ${position} - ${formatEther(squarePrice)} ETH`
+                              : `Square ${position} - ${formatAmount(squarePrice)} ${tokenSymbol}`
                           }
                         >
                           {isOwned && (

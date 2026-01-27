@@ -2,6 +2,7 @@
 
 import { Quarter, QUARTER_LABELS, type Score } from '@/lib/contracts';
 import { formatEther } from 'viem';
+import { Token, formatTokenAmount, isNativeToken } from '@/config/tokens';
 
 interface ScoreDisplayProps {
   teamAName: string;
@@ -18,10 +19,19 @@ interface ScoreDisplayProps {
     [Quarter.Q3]?: { address: `0x${string}`; payout: bigint };
     [Quarter.FINAL]?: { address: `0x${string}`; payout: bigint };
   };
+  token?: Token;
 }
 
-export function ScoreDisplay({ teamAName, teamBName, scores, winners }: ScoreDisplayProps) {
+export function ScoreDisplay({ teamAName, teamBName, scores, winners, token }: ScoreDisplayProps) {
   const quarters = [Quarter.Q1, Quarter.Q2, Quarter.Q3, Quarter.FINAL];
+
+  const tokenSymbol = token?.symbol || 'ETH';
+  const formatAmount = (amount: bigint) => {
+    if (!token || isNativeToken(token)) {
+      return formatEther(amount);
+    }
+    return formatTokenAmount(amount, token.decimals);
+  };
 
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -139,7 +149,7 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners }: ScoreDis
                           {truncateAddress(winner.address)}
                         </p>
                         <p className="text-xs text-[var(--smoke)]">
-                          Won {formatEther(winner.payout)} ETH
+                          Won {formatAmount(winner.payout)} {tokenSymbol}
                         </p>
                       </div>
                     ) : score?.submitted && !isSettled ? (

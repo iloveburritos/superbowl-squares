@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { formatEther } from 'viem';
+import { formatEther, zeroAddress } from 'viem';
+import { useChainId } from 'wagmi';
 import { usePoolInfo } from '@/hooks/usePool';
 import { PoolState, POOL_STATE_LABELS } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo } from './Logos';
+import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 interface PoolCardProps {
   address: `0x${string}`;
@@ -13,6 +15,26 @@ interface PoolCardProps {
 
 export function PoolCard({ address, showOperatorBadge }: PoolCardProps) {
   const { poolInfo, isLoading, error } = usePoolInfo(address);
+  const chainId = useChainId();
+
+  // Get token info for the pool's payment token
+  const getPaymentToken = () => {
+    if (!poolInfo?.paymentToken || !chainId) return ETH_TOKEN;
+    const found = findToken(chainId, poolInfo.paymentToken);
+    if (found) return found;
+    if (poolInfo.paymentToken !== zeroAddress) {
+      return { symbol: 'TOKEN', name: 'Unknown Token', decimals: 18, address: poolInfo.paymentToken };
+    }
+    return ETH_TOKEN;
+  };
+
+  const paymentToken = poolInfo ? getPaymentToken() : ETH_TOKEN;
+  const formatAmount = (amount: bigint) => {
+    if (isNativeToken(paymentToken)) {
+      return formatEther(amount);
+    }
+    return formatTokenAmount(amount, paymentToken.decimals);
+  };
 
   if (isLoading) {
     return (
@@ -135,8 +157,8 @@ export function PoolCard({ address, showOperatorBadge }: PoolCardProps) {
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <StatItem label="Square Price" value={`${formatEther(poolInfo.squarePrice)} ETH`} />
-          <StatItem label="Total Pot" value={`${formatEther(poolInfo.totalPot)} ETH`} highlight />
+          <StatItem label="Square Price" value={`${formatAmount(poolInfo.squarePrice)} ${paymentToken.symbol}`} />
+          <StatItem label="Total Pot" value={`${formatAmount(poolInfo.totalPot)} ${paymentToken.symbol}`} highlight />
           <StatItem label="Squares Sold" value={`${poolInfo.squaresSold}/100`} />
           <StatItem
             label="Available"

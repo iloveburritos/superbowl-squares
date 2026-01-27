@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation';
 import type { PoolParams } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo, SuperBowlLXLogo } from './Logos';
 import { SUPPORTED_CHAINS } from '@/config/wagmi';
+import { TokenSelector, TokenDisplay } from './TokenSelector';
+import { Token, ETH_TOKEN, isNativeToken, parseTokenAmount, getTokensForChain } from '@/config/tokens';
 
 // Super Bowl LX: February 8, 2026 at 6:30 PM EST
 const SUPER_BOWL_DATE = new Date('2026-02-08T18:30:00-05:00');
@@ -38,9 +40,23 @@ export function CreatePoolForm() {
   const { createPool, isPending, isConfirming, isSuccess, error, poolAddress, hash, isFactoryConfigured } = useCreatePool();
 
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
+  const [selectedToken, setSelectedToken] = useState<Token>(ETH_TOKEN);
 
   // Use selected chain or current wallet chain
   const targetChainId = selectedChainId || chainId;
+
+  // Reset token to ETH when chain changes (in case selected token isn't available)
+  useEffect(() => {
+    if (targetChainId) {
+      const availableTokens = getTokensForChain(targetChainId);
+      const tokenStillAvailable = availableTokens.some(
+        (t) => t.address.toLowerCase() === selectedToken.address.toLowerCase()
+      );
+      if (!tokenStillAvailable) {
+        setSelectedToken(ETH_TOKEN);
+      }
+    }
+  }, [targetChainId, selectedToken.address]);
 
   const [formData, setFormData] = useState({
     name: 'Super Bowl LX Pool',
@@ -122,10 +138,15 @@ export function CreatePoolForm() {
     const now = BigInt(Math.floor(Date.now() / 1000));
     const vrfConfig = VRF_CONFIGS[chainId] || { subscriptionId: BigInt(0), keyHash: zeroAddress };
 
+    // Parse price based on token decimals
+    const squarePrice = isNativeToken(selectedToken)
+      ? parseEther(formData.squarePrice)
+      : parseTokenAmount(formData.squarePrice, selectedToken.decimals);
+
     const params: PoolParams = {
       name: formData.name,
-      squarePrice: parseEther(formData.squarePrice),
-      paymentToken: zeroAddress, // ETH
+      squarePrice,
+      paymentToken: selectedToken.address,
       maxSquaresPerUser: parseInt(formData.maxSquaresPerUser) || 0,
       payoutPercentages: [
         parseInt(formData.q1Payout),
@@ -397,46 +418,88 @@ export function CreatePoolForm() {
             <h2 className="text-xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
               PRICING & LIMITS
             </h2>
-            <p className="text-sm text-[var(--smoke)]">Set the price per square and purchase limits</p>
+            <p className="text-sm text-[var(--smoke)]">Choose payment token and set the price per square</p>
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          {/* Token Selection */}
           <div>
-            <label className="label">Square Price (ETH)</label>
-            <div className="relative">
-              <input
-                type="number"
-                name="squarePrice"
-                value={formData.squarePrice}
-                onChange={handleChange}
-                step="0.01"
-                min="0"
-                className="input w-full text-xl font-bold pr-16"
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--smoke)] font-medium">ETH</span>
-            </div>
-            {errors.squarePrice && <p className="text-[var(--danger)] text-sm mt-2">{errors.squarePrice}</p>}
+            <label className="label">Payment Token</label>
+            <TokenSelector
+              chainId={targetChainId}
+              selectedToken={selectedToken}
+              onSelectToken={setSelectedToken}
+              disabled={!targetChainId}
+            />
             <p className="text-sm text-[var(--smoke)] mt-2">
-              Max pot: <span className="text-[var(--turf-green)] font-bold">{(parseFloat(formData.squarePrice) * 100).toFixed(2)} ETH</span>
+              {isNativeToken(selectedToken)
+                ? 'Players will pay with native ETH'
+                : `Players will need to approve ${selectedToken.symbol} before buying squares`
+              }
             </p>
           </div>
 
-          <div>
-            <label className="label">Max Squares Per User</label>
-            <input
-              type="number"
-              name="maxSquaresPerUser"
-              value={formData.maxSquaresPerUser}
-              onChange={handleChange}
-              min="0"
-              max="100"
-              className="input w-full text-xl font-bold"
-            />
-            <p className="text-sm text-[var(--smoke)] mt-2">
-              Set to 0 for unlimited
-            </p>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="label">Square Price ({selectedToken.symbol})</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  name="squarePrice"
+                  value={formData.squarePrice}
+                  onChange={handleChange}
+                  step={selectedToken.decimals === 6 ? '0.01' : '0.001'}
+                  min="0"
+                  className="input w-full text-xl font-bold pr-20"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--smoke)] font-medium">
+                  {selectedToken.symbol}
+                </span>
+              </div>
+              {errors.squarePrice && <p className="text-[var(--danger)] text-sm mt-2">{errors.squarePrice}</p>}
+              <p className="text-sm text-[var(--smoke)] mt-2">
+                Max pot: <span className="text-[var(--turf-green)] font-bold">
+                  {(parseFloat(formData.squarePrice || '0') * 100).toFixed(selectedToken.decimals === 6 ? 2 : 4)} {selectedToken.symbol}
+                </span>
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Max Squares Per User</label>
+              <input
+                type="number"
+                name="maxSquaresPerUser"
+                value={formData.maxSquaresPerUser}
+                onChange={handleChange}
+                min="0"
+                max="100"
+                className="input w-full text-xl font-bold"
+              />
+              <p className="text-sm text-[var(--smoke)] mt-2">
+                Set to 0 for unlimited
+              </p>
+            </div>
           </div>
+
+          {/* ERC20 Notice */}
+          {!isNativeToken(selectedToken) && (
+            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <div className="flex items-start gap-3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-blue-400 mt-0.5 shrink-0">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div>
+                  <p className="text-blue-400 font-medium">ERC20 Token Selected</p>
+                  <p className="text-sm text-[var(--smoke)] mt-1">
+                    When players buy squares, they'll first need to approve the pool contract to spend their {selectedToken.symbol}.
+                    This is a standard ERC20 approval flow.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -593,21 +656,46 @@ export function CreatePoolForm() {
             </div>
           </div>
 
+          {/* Payment Token */}
+          <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--smoke)]">Payment Token</span>
+              <TokenDisplay token={selectedToken} />
+            </div>
+          </div>
+
           {/* Pricing */}
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
             <div className="flex justify-between items-center mb-2">
               <span className="text-[var(--smoke)]">Square Price</span>
-              <span className="font-bold text-[var(--chrome)]">{formData.squarePrice} ETH</span>
+              <span className="font-bold text-[var(--chrome)]">{formData.squarePrice} {selectedToken.symbol}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-[var(--smoke)]">Max Pot</span>
-              <span className="font-bold text-[var(--turf-green)]">{(parseFloat(formData.squarePrice) * 100).toFixed(2)} ETH</span>
+              <span className="font-bold text-[var(--turf-green)]">
+                {(parseFloat(formData.squarePrice || '0') * 100).toFixed(selectedToken.decimals === 6 ? 2 : 4)} {selectedToken.symbol}
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-[var(--smoke)]">Max Squares/User</span>
               <span className="font-bold text-[var(--chrome)]">{formData.maxSquaresPerUser === '0' ? 'Unlimited' : formData.maxSquaresPerUser}</span>
             </div>
           </div>
+
+          {/* ERC20 Notice in Review */}
+          {!isNativeToken(selectedToken) && (
+            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <div className="flex items-start gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-blue-400 mt-0.5 shrink-0">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <p className="text-sm text-[var(--smoke)]">
+                  Players will need to approve {selectedToken.symbol} spending before buying squares
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Payouts */}
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">

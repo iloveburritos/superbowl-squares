@@ -2,14 +2,24 @@
 
 import { formatEther } from 'viem';
 import { QUARTER_LABELS, Quarter } from '@/lib/contracts';
+import { Token, formatTokenAmount, isNativeToken } from '@/config/tokens';
 
 interface PayoutBreakdownProps {
   percentages: [number, number, number, number];
   totalPot: bigint;
+  token?: Token;
 }
 
-export function PayoutBreakdown({ percentages, totalPot }: PayoutBreakdownProps) {
+export function PayoutBreakdown({ percentages, totalPot, token }: PayoutBreakdownProps) {
   const quarters = [Quarter.Q1, Quarter.Q2, Quarter.Q3, Quarter.FINAL];
+
+  const tokenSymbol = token?.symbol || 'ETH';
+  const formatAmount = (amount: bigint) => {
+    if (!token || isNativeToken(token)) {
+      return formatEther(amount);
+    }
+    return formatTokenAmount(amount, token.decimals);
+  };
 
   const calculatePayout = (percentage: number) => {
     return (totalPot * BigInt(percentage)) / BigInt(100);
@@ -115,7 +125,7 @@ export function PayoutBreakdown({ percentages, totalPot }: PayoutBreakdownProps)
                 </div>
 
                 <div className="text-sm text-[var(--smoke)] mt-1">
-                  {formatEther(payout)} ETH
+                  {formatAmount(payout)} {tokenSymbol}
                 </div>
               </div>
             );
@@ -140,7 +150,7 @@ export function PayoutBreakdown({ percentages, totalPot }: PayoutBreakdownProps)
                 className="text-2xl font-bold text-[var(--chrome)]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                {formatEther(totalPot)} ETH
+                {formatAmount(totalPot)} {tokenSymbol}
               </span>
             </div>
           </div>

@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { useAccount } from 'wagmi';
-import { formatEther } from 'viem';
+import { useAccount, useChainId } from 'wagmi';
+import { formatEther, zeroAddress } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 import { SquaresGrid } from '@/components/SquaresGrid';
 import { ScoreDisplay } from '@/components/ScoreDisplay';
 import { PayoutBreakdown } from '@/components/PayoutBreakdown';
 import { ScoreFetcher } from '@/components/ScoreFetcher';
+import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 import {
   usePoolInfo,
@@ -32,6 +33,7 @@ export default function PoolPage() {
   const params = useParams();
   const poolAddress = params.id as `0x${string}`;
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
 
   // Pool data
   const { poolInfo, isLoading: infoLoading, refetch: refetchInfo } = usePoolInfo(poolAddress);
@@ -61,16 +63,39 @@ export default function PoolPage() {
   // Success toast state
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
 
+  // Get token info for the pool's payment token
+  const paymentToken = useMemo(() => {
+    if (!poolInfo?.paymentToken || !chainId) return ETH_TOKEN;
+    const found = findToken(chainId, poolInfo.paymentToken);
+    if (found) return found;
+    // If token not found in our list, create a basic entry
+    if (poolInfo.paymentToken !== zeroAddress) {
+      return {
+        symbol: 'TOKEN',
+        name: 'Unknown Token',
+        decimals: 18,
+        address: poolInfo.paymentToken,
+      };
+    }
+    return ETH_TOKEN;
+  }, [poolInfo?.paymentToken, chainId]);
+
+  const isNativePayment = isNativeToken(paymentToken);
+
   // Transactions
   const {
     buySquares,
+    continueBuyAfterApproval,
+    needsApproval,
+    step: buyStep,
     isPending: isBuying,
     isConfirming: isConfirmingBuy,
     isSuccess: purchaseSuccess,
+    isApproveSuccess,
     error: buyError,
     hash: purchaseHash,
     reset: resetPurchase,
-  } = useBuySquares(poolAddress);
+  } = useBuySquares(poolAddress, poolInfo?.paymentToken);
 
   const {
     claimPayout,
@@ -92,6 +117,21 @@ export default function PoolPage() {
       return () => clearTimeout(timer);
     }
   }, [purchaseSuccess, refetchGrid, refetchInfo, resetPurchase]);
+
+  // After approval succeeds, continue with purchase
+  useEffect(() => {
+    if (isApproveSuccess && selectedSquares.length > 0 && poolInfo?.squarePrice) {
+      continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice);
+    }
+  }, [isApproveSuccess, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval]);
+
+  // Format token amount for display
+  const formatAmount = (amount: bigint) => {
+    if (isNativePayment) {
+      return formatEther(amount);
+    }
+    return formatTokenAmount(amount, paymentToken.decimals);
+  };
 
   // Computed values
   const isOperator = address?.toLowerCase() === operator?.toLowerCase();
@@ -257,7 +297,7 @@ export default function PoolPage() {
                   TOTAL POT
                 </p>
                 <p className="text-2xl font-bold text-[var(--turf-green)]" style={{ fontFamily: 'var(--font-display)' }}>
-                  {formatEther(poolInfo.totalPot)} ETH
+                  {formatAmount(poolInfo.totalPot)} {paymentToken.symbol}
                 </p>
               </div>
               <div className="w-px h-12 bg-[var(--steel)]/30" />
@@ -291,6 +331,7 @@ export default function PoolPage() {
                 selectedSquares={selectedSquares}
                 onSquareSelect={handleSquareSelect}
                 isInteractive={canBuy}
+                token={paymentToken}
               />
             </div>
 
@@ -321,11 +362,16 @@ export default function PoolPage() {
                             Squares Selected
                           </p>
                           <p className="text-[var(--turf-green)] font-bold text-xl">
-                            {formatEther(totalCost)} ETH
+                            {formatAmount(totalCost)} {paymentToken.symbol}
                           </p>
                           {remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0 && (
                             <p className="text-sm text-[var(--smoke)]">
                               You can buy {remainingSquares} more
+                            </p>
+                          )}
+                          {!isNativePayment && needsApproval(totalCost) && selectedSquares.length > 0 && (
+                            <p className="text-xs text-blue-400 mt-1">
+                              Requires {paymentToken.symbol} approval
                             </p>
                           )}
                         </div>
@@ -335,7 +381,17 @@ export default function PoolPage() {
                         disabled={selectedSquares.length === 0 || isBuying || isConfirmingBuy}
                         className="btn-primary px-8 py-4 text-lg disabled:opacity-40"
                       >
-                        {isBuying ? (
+                        {buyStep === 'approving' && isBuying ? (
+                          <span className="flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Approve {paymentToken.symbol}...
+                          </span>
+                        ) : buyStep === 'approving' && isConfirmingBuy ? (
+                          <span className="flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Approving...
+                          </span>
+                        ) : isBuying ? (
                           <span className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             Confirm in Wallet...
@@ -344,6 +400,14 @@ export default function PoolPage() {
                           <span className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             Buying...
+                          </span>
+                        ) : !isNativePayment && needsApproval(totalCost) && selectedSquares.length > 0 ? (
+                          <span className="flex items-center gap-2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                              <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                            </svg>
+                            Approve & Buy {selectedSquares.length} Squares
                           </span>
                         ) : (
                           <span className="flex items-center gap-2">
@@ -384,6 +448,7 @@ export default function PoolPage() {
                   [Quarter.Q3]: q3Winner && q3Payout ? { address: q3Winner, payout: q3Payout } : undefined,
                   [Quarter.FINAL]: finalWinner && finalPayout ? { address: finalWinner, payout: finalPayout } : undefined,
                 }}
+                token={paymentToken}
               />
             )}
           </div>
@@ -406,15 +471,21 @@ export default function PoolPage() {
 
               <dl className="space-y-4">
                 <div className="flex justify-between items-center py-2 border-b border-[var(--steel)]/20">
+                  <dt className="text-[var(--smoke)]">Payment Token</dt>
+                  <dd className="font-bold text-[var(--chrome)]">
+                    {paymentToken.symbol}
+                  </dd>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-[var(--steel)]/20">
                   <dt className="text-[var(--smoke)]">Square Price</dt>
                   <dd className="font-bold text-[var(--chrome)]">
-                    {formatEther(poolInfo.squarePrice)} ETH
+                    {formatAmount(poolInfo.squarePrice)} {paymentToken.symbol}
                   </dd>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-[var(--steel)]/20">
                   <dt className="text-[var(--smoke)]">Total Pot</dt>
                   <dd className="font-bold text-[var(--turf-green)]">
-                    {formatEther(poolInfo.totalPot)} ETH
+                    {formatAmount(poolInfo.totalPot)} {paymentToken.symbol}
                   </dd>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-[var(--steel)]/20">
@@ -473,6 +544,7 @@ export default function PoolPage() {
               <PayoutBreakdown
                 percentages={percentages}
                 totalPot={poolInfo.totalPot}
+                token={paymentToken}
               />
             )}
 
