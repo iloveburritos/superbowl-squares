@@ -145,7 +145,7 @@ export function SquaresGrid({
   const getSquareClass = (position: number) => {
     const owner = grid[position];
     const isOwned = owner !== ZERO_ADDRESS;
-    const isMine = address && owner?.toLowerCase() === address.toLowerCase();
+    const isMine = !!(address && owner?.toLowerCase() === address.toLowerCase());
     const isWinner = position === winningPosition;
     const isSelected = selectedSquares.includes(position);
 
@@ -270,7 +270,7 @@ export function SquaresGrid({
                       const position = row * 10 + col;
                       const owner = grid[position];
                       const isOwned = owner !== ZERO_ADDRESS;
-                      const isMine = address && owner?.toLowerCase() === address.toLowerCase();
+                      const isMine = !!(address && owner?.toLowerCase() === address.toLowerCase());
                       const canSelect = isInteractive && state === PoolState.OPEN && !isOwned;
                       const isHovered = hoveredSquare === position;
 

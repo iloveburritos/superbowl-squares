@@ -175,7 +175,7 @@ export function TokenSelector({
 
       {/* Dropdown */}
       {isOpen && chainId && (
-        <div className="absolute z-50 w-full mt-2 p-2 rounded-xl bg-[var(--midnight)] border border-[var(--steel)]/30 shadow-xl shadow-black/50">
+        <div className="absolute z-[100] w-full mt-2 p-2 rounded-xl bg-[var(--midnight)] border border-[var(--steel)]/30 shadow-xl shadow-black/50 overflow-hidden">
           {!showCustom ? (
             <>
               {/* Token List */}
@@ -190,29 +190,31 @@ export function TokenSelector({
                       type="button"
                       onClick={() => handleSelectToken(token)}
                       className={`
-                        w-full flex items-center gap-3 p-3 rounded-lg transition-all
+                        w-full flex items-center gap-3 p-3 rounded-lg transition-all overflow-hidden
                         ${isSelected
                           ? 'bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30'
                           : 'hover:bg-[var(--steel)]/20 border border-transparent'
                         }
                       `}
                     >
-                      <TokenIcon token={token} size={32} />
-                      <div className="flex-1 text-left">
+                      <div className="shrink-0">
+                        <TokenIcon token={token} size={32} />
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-[var(--chrome)]">{token.symbol}</span>
+                          <span className="font-bold text-[var(--chrome)] truncate">{token.symbol}</span>
                           {isNative && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-[var(--turf-green)]/20 text-[var(--turf-green)]">
+                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-[var(--turf-green)]/20 text-[var(--turf-green)] shrink-0">
                               NATIVE
                             </span>
                           )}
                           {isSelected && (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)] shrink-0">
                               <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           )}
                         </div>
-                        <div className="text-xs text-[var(--smoke)]">{token.name}</div>
+                        <div className="text-xs text-[var(--smoke)] truncate">{token.name}</div>
                       </div>
                     </button>
                   );
@@ -226,16 +228,16 @@ export function TokenSelector({
               <button
                 type="button"
                 onClick={() => setShowCustom(true)}
-                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--steel)]/20 transition-all"
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--steel)]/20 transition-all overflow-hidden"
               >
-                <div className="w-8 h-8 rounded-full bg-[var(--steel)]/30 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-[var(--steel)]/30 flex items-center justify-center shrink-0">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--smoke)]">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </div>
-                <div className="text-left">
-                  <div className="font-medium text-[var(--smoke)]">Custom Token</div>
-                  <div className="text-xs text-[var(--smoke)]/60">Enter contract address</div>
+                <div className="text-left min-w-0">
+                  <div className="font-medium text-[var(--smoke)] truncate">Custom Token</div>
+                  <div className="text-xs text-[var(--smoke)]/60 truncate">Enter contract address</div>
                 </div>
               </button>
             </>

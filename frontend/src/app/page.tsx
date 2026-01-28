@@ -158,7 +158,7 @@ export default function HomePage() {
                   </div>
                   <div>
                     <h3 className="text-[var(--chrome)] font-bold mb-1">Numbers Are Randomly Assigned</h3>
-                    <p>After all squares are sold, random numbers 0-9 are assigned to each team's axis using Chainlink VRF. This keeps it fair - no one knows which numbers they'll get when buying.</p>
+                    <p>After all squares are sold, random numbers 0-9 are assigned to each team's axis using a secure commit-reveal scheme. This keeps it fair - no one knows which numbers they'll get when buying.</p>
                   </div>
                 </div>
 
@@ -200,7 +200,7 @@ export default function HomePage() {
             <FeatureCard
               icon={<DiceIcon />}
               title="Provably Fair"
-              description="Random number assignment powered by Chainlink VRF ensures truly random and verifiable results. No more suspicious organizers."
+              description="Random number assignment uses a secure commit-reveal scheme that ensures truly random and verifiable results. No more suspicious organizers."
               delay={100}
             />
             <FeatureCard
@@ -247,7 +247,7 @@ export default function HomePage() {
             <Step
               number={2}
               title="Random Numbers"
-              description="After the pool closes, Chainlink VRF assigns random 0-9 numbers to rows and columns."
+              description="After the pool closes, the operator reveals the randomness to assign 0-9 numbers to rows and columns."
               delay={200}
             />
             <Step

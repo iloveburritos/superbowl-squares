@@ -3,8 +3,13 @@ export const SquaresFactoryABI = [
     type: 'constructor',
     inputs: [
       { name: '_functionsRouter', type: 'address' },
+      { name: '_vrfCoordinator', type: 'address' },
+      { name: '_automationRegistrar', type: 'address' },
       { name: '_functionsSubscriptionId', type: 'uint64' },
       { name: '_functionsDonId', type: 'bytes32' },
+      { name: '_vrfSubscriptionId', type: 'uint256' },
+      { name: '_vrfKeyHash', type: 'bytes32' },
+      { name: '_creationFee', type: 'uint256' },
     ],
   },
   {
@@ -23,13 +28,13 @@ export const SquaresFactoryABI = [
           { name: 'teamAName', type: 'string' },
           { name: 'teamBName', type: 'string' },
           { name: 'purchaseDeadline', type: 'uint256' },
-          { name: 'revealDeadline', type: 'uint256' },
+          { name: 'vrfTriggerTime', type: 'uint256' },
           { name: 'passwordHash', type: 'bytes32' },
         ],
       },
     ],
     outputs: [{ name: 'pool', type: 'address' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -67,9 +72,37 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
+    name: 'getPoolUpkeepId',
+    inputs: [{ name: 'pool', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'functionsRouter',
     inputs: [],
     outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'vrfCoordinator',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'automationRegistrar',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'creationFee',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -91,6 +124,20 @@ export const SquaresFactoryABI = [
     name: 'defaultFunctionsSource',
     inputs: [],
     outputs: [{ type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'defaultVRFSubscriptionId',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'defaultVRFKeyHash',
+    inputs: [],
+    outputs: [{ type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -123,6 +170,20 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
+    name: 'setCreationFee',
+    inputs: [{ name: '_creationFee', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'withdrawFees',
+    inputs: [{ name: 'to', type: 'address' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'transferAdmin',
     inputs: [{ name: 'newAdmin', type: 'address' }],
     outputs: [],
@@ -137,11 +198,54 @@ export const SquaresFactoryABI = [
       { name: 'name', type: 'string', indexed: false },
       { name: 'squarePrice', type: 'uint256', indexed: false },
       { name: 'paymentToken', type: 'address', indexed: false },
+      { name: 'upkeepId', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'CreationFeeUpdated',
+    inputs: [
+      { name: 'oldFee', type: 'uint256', indexed: false },
+      { name: 'newFee', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'FeesWithdrawn',
+    inputs: [
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'AdminTransferred',
+    inputs: [
+      { name: 'oldAdmin', type: 'address', indexed: true },
+      { name: 'newAdmin', type: 'address', indexed: true },
     ],
   },
   {
     type: 'error',
     name: 'OnlyAdmin',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'InsufficientCreationFee',
+    inputs: [
+      { name: 'sent', type: 'uint256' },
+      { name: 'required', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'TransferFailed',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'InvalidAddress',
     inputs: [],
   },
 ] as const;

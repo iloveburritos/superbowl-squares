@@ -4,7 +4,23 @@ pragma solidity ^0.8.24;
 import {Test, console} from "forge-std/Test.sol";
 import {SquaresLib} from "../src/libraries/SquaresLib.sol";
 
+/// @dev Helper contract to wrap library calls for revert testing
+contract SquaresLibWrapper {
+    function positionToCoords(uint8 position) external pure returns (uint8 row, uint8 col) {
+        return SquaresLib.positionToCoords(position);
+    }
+
+    function coordsToPosition(uint8 row, uint8 col) external pure returns (uint8) {
+        return SquaresLib.coordsToPosition(row, col);
+    }
+}
+
 contract SquaresLibTest is Test {
+    SquaresLibWrapper public wrapper;
+
+    function setUp() public {
+        wrapper = new SquaresLibWrapper();
+    }
     // ============ Fisher-Yates Shuffle Tests ============
 
     function test_FisherYatesShuffle_ContainsAllNumbers() public pure {
@@ -117,7 +133,7 @@ contract SquaresLibTest is Test {
 
     function test_PositionToCoords_InvalidPosition() public {
         vm.expectRevert("Invalid position");
-        SquaresLib.positionToCoords(100);
+        wrapper.positionToCoords(100);
     }
 
     function test_CoordsToPosition() public pure {
@@ -128,10 +144,10 @@ contract SquaresLibTest is Test {
 
     function test_CoordsToPosition_InvalidCoords() public {
         vm.expectRevert("Invalid coordinates");
-        SquaresLib.coordsToPosition(10, 0);
+        wrapper.coordsToPosition(10, 0);
 
         vm.expectRevert("Invalid coordinates");
-        SquaresLib.coordsToPosition(0, 10);
+        wrapper.coordsToPosition(0, 10);
     }
 
     // ============ Payout Validation Tests ============

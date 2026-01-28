@@ -295,7 +295,7 @@ function Footer() {
               POWERED BY
             </h4>
             <div className="flex flex-wrap gap-2">
-              <TechBadge>Chainlink VRF</TechBadge>
+              <TechBadge>Chainlink</TechBadge>
               <TechBadge>Ethereum</TechBadge>
             </div>
           </div>

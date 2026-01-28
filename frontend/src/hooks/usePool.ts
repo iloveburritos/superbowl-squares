@@ -123,6 +123,17 @@ export function usePoolOperator(poolAddress: `0x${string}` | undefined) {
   return { operator: data as `0x${string}` | undefined, isLoading, error };
 }
 
+// ABI fragment for legacy revealDeadline (for backward compatibility with old contracts)
+const legacyRevealDeadlineABI = [
+  {
+    inputs: [],
+    name: 'revealDeadline',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
 export function usePoolDeadlines(poolAddress: `0x${string}` | undefined) {
   const { data, isLoading, error } = useReadContracts({
     contracts: [
@@ -134,6 +145,12 @@ export function usePoolDeadlines(poolAddress: `0x${string}` | undefined) {
       {
         address: poolAddress,
         abi: SquaresPoolABI,
+        functionName: 'vrfTriggerTime',
+      },
+      // Fallback for old contracts that use revealDeadline
+      {
+        address: poolAddress,
+        abi: legacyRevealDeadlineABI,
         functionName: 'revealDeadline',
       },
     ],
@@ -142,9 +159,12 @@ export function usePoolDeadlines(poolAddress: `0x${string}` | undefined) {
     },
   });
 
+  // Use vrfTriggerTime if available, otherwise fall back to revealDeadline
+  const vrfTriggerTime = (data?.[1]?.result as bigint | undefined) ?? (data?.[2]?.result as bigint | undefined);
+
   return {
     purchaseDeadline: data?.[0]?.result as bigint | undefined,
-    revealDeadline: data?.[1]?.result as bigint | undefined,
+    vrfTriggerTime,
     isLoading,
     error,
   };

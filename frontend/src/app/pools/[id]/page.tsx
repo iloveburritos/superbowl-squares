@@ -27,6 +27,8 @@ import {
 } from '@/hooks/usePool';
 import { useBuySquares } from '@/hooks/useBuySquares';
 import { useClaimPayout } from '@/hooks/useClaimPayout';
+import { useClosePoolAndRequestVRF, useSubmitScore } from '@/hooks/useOperatorActions';
+import { useVRFStatus, formatTimeRemaining } from '@/hooks/useVRFStatus';
 
 import { PoolState, POOL_STATE_LABELS, Quarter, QUARTER_LABELS, getFactoryAddress } from '@/lib/contracts';
 
@@ -47,13 +49,26 @@ export default function PoolPage() {
   // Pool data
   const { poolInfo, isLoading: infoLoading, refetch: refetchInfo } = usePoolInfo(poolAddress);
   const { grid, isLoading: gridLoading, refetch: refetchGrid } = usePoolGrid(poolAddress);
-  const { rowNumbers, colNumbers } = usePoolNumbers(poolAddress);
-  const { purchaseDeadline, revealDeadline } = usePoolDeadlines(poolAddress);
+  const { rowNumbers, colNumbers, refetch: refetchNumbers } = usePoolNumbers(poolAddress);
+  const { purchaseDeadline, vrfTriggerTime } = usePoolDeadlines(poolAddress);
   const { squareCount } = useUserSquareCount(poolAddress, address);
   const { maxSquares } = useMaxSquaresPerUser(poolAddress);
   const { percentages } = usePayoutPercentages(poolAddress);
   const { operator } = usePoolOperator(poolAddress);
   const { isPrivate } = useIsPrivate(poolAddress);
+
+  // VRF Automation status
+  const { vrfStatus, timeUntilTrigger, automationStatus, refetch: refetchVRFStatus } = useVRFStatus(poolAddress);
+
+  // Operator fallback action (manual VRF trigger)
+  const {
+    closePoolAndRequestVRF,
+    isPending: isVRFPending,
+    isConfirming: isVRFConfirming,
+    isSuccess: isVRFSuccess,
+    error: vrfError,
+    reset: resetVRF,
+  } = useClosePoolAndRequestVRF(poolAddress);
 
   // Scores
   const { score: q1Score } = usePoolScore(poolAddress, Quarter.Q1);
@@ -78,16 +93,25 @@ export default function PoolPage() {
   // Share state
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // FAQ modal state
+  const [showFAQ, setShowFAQ] = useState(false);
+
+  // Dev mode state
+  const [devMode, setDevMode] = useState(false);
+  const [devQuarter, setDevQuarter] = useState(0);
+  const [devScoreA, setDevScoreA] = useState('');
+  const [devScoreB, setDevScoreB] = useState('');
+
   // Countdown state
   const [countdown, setCountdown] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
   // Countdown timer effect
   useEffect(() => {
-    if (!revealDeadline) return;
+    if (!vrfTriggerTime) return;
 
     const updateCountdown = () => {
       const now = Math.floor(Date.now() / 1000);
-      const diff = Number(revealDeadline) - now;
+      const diff = Number(vrfTriggerTime) - now;
 
       if (diff <= 0) {
         setCountdown(null);
@@ -106,7 +130,7 @@ export default function PoolPage() {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [revealDeadline]);
+  }, [vrfTriggerTime]);
 
   // Get token info for the pool's payment token
   const paymentToken = useMemo(() => {
@@ -176,6 +200,36 @@ export default function PoolPage() {
       continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice, poolPassword);
     }
   }, [isApproveSuccess, buyStep, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval, poolPassword]);
+
+  // Score submission hook for dev mode
+  const {
+    submitScore,
+    isPending: isSubmitScorePending,
+    isConfirming: isSubmitScoreConfirming,
+    isSuccess: isSubmitScoreSuccess,
+    error: submitScoreError,
+    reset: resetSubmitScore,
+  } = useSubmitScore(poolAddress);
+
+  // Refetch pool info and VRF status when VRF request succeeds
+  useEffect(() => {
+    if (isVRFSuccess) {
+      refetchInfo();
+      refetchVRFStatus();
+      refetchNumbers();
+      resetVRF();
+    }
+  }, [isVRFSuccess, refetchInfo, refetchVRFStatus, refetchNumbers, resetVRF]);
+
+  // Refetch pool info when score submission succeeds
+  useEffect(() => {
+    if (isSubmitScoreSuccess) {
+      refetchInfo();
+      resetSubmitScore();
+      setDevScoreA('');
+      setDevScoreB('');
+    }
+  }, [isSubmitScoreSuccess, refetchInfo, resetSubmitScore]);
 
   // Format token amount for display
   const formatAmount = (amount: bigint) => {
@@ -420,7 +474,7 @@ export default function PoolPage() {
             </div>
 
             {/* Quick stats */}
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 md:gap-6">
               <div className="text-center">
                 <p className="text-xs text-[var(--smoke)] mb-1" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
                   TOTAL POT
@@ -438,8 +492,30 @@ export default function PoolPage() {
                   {poolInfo.squaresSold.toString()}/100
                 </p>
               </div>
+              <div className="w-px h-12 bg-[var(--steel)]/30 hidden md:block" />
+              <button
+                onClick={() => setShowFAQ(true)}
+                className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--steel)]/20 border border-[var(--steel)]/30 hover:bg-[var(--steel)]/30 transition-colors text-sm text-[var(--smoke)] hover:text-[var(--chrome)]"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                How It Works
+              </button>
             </div>
           </div>
+          {/* Mobile FAQ button */}
+          <button
+            onClick={() => setShowFAQ(true)}
+            className="md:hidden flex items-center justify-center gap-2 mt-4 px-4 py-2 rounded-lg bg-[var(--steel)]/20 border border-[var(--steel)]/30 text-sm text-[var(--smoke)]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            How It Works
+          </button>
         </div>
       </div>
 
@@ -633,6 +709,67 @@ export default function PoolPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Operator Fallback Panel - only shown when automation hasn't triggered */}
+            {isOperator && poolInfo.state === PoolState.OPEN && timeUntilTrigger !== undefined && timeUntilTrigger <= 0 && !vrfStatus?.vrfRequested && (
+              <div className="card p-6 border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-transparent">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-purple-400">
+                      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="2" />
+                      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-bold text-purple-300" style={{ fontFamily: 'var(--font-display)' }}>
+                    OPERATOR CONTROLS
+                  </h2>
+                </div>
+                <p className="text-xs text-[var(--smoke)] mb-3">
+                  Automation hasn't triggered yet. You can manually assign numbers.
+                </p>
+                <button
+                  onClick={closePoolAndRequestVRF}
+                  disabled={isVRFPending || isVRFConfirming}
+                  className="w-full py-2 px-4 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 hover:bg-purple-500/30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isVRFPending ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Confirm in Wallet...
+                    </span>
+                  ) : isVRFConfirming ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Assigning Numbers...
+                    </span>
+                  ) : (
+                    'Assign Numbers Now'
+                  )}
+                </button>
+                {vrfError && (
+                  <p className="text-xs text-[var(--danger)] mt-2">{vrfError.message}</p>
+                )}
+              </div>
+            )}
+
+            {/* Numbers Assigned Status */}
+            {poolInfo.state >= PoolState.NUMBERS_ASSIGNED && (
+              <div className="card p-6 border-[var(--turf-green)]/30 bg-gradient-to-br from-[var(--turf-green)]/5 to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-[var(--turf-green)]" style={{ fontFamily: 'var(--font-display)' }}>
+                      NUMBERS ASSIGNED
+                    </h2>
+                    <p className="text-xs text-[var(--smoke)]">Pool is ready for the game!</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Pool Info */}
             <div className="card p-6">
               <div className="flex items-center gap-3 mb-6">
@@ -708,12 +845,12 @@ export default function PoolPage() {
                   </dt>
                   <dd className="font-medium text-[var(--chrome)]">{formatDeadline(purchaseDeadline)}</dd>
                 </div>
-                {purchaseDeadline !== revealDeadline && (
+                {purchaseDeadline !== vrfTriggerTime && (
                   <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
                     <dt className="text-xs text-[var(--smoke)] mb-1" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
-                      NUMBERS REVEALED
+                      NUMBERS ASSIGNED AT
                     </dt>
-                    <dd className="font-medium text-[var(--chrome)]">{formatDeadline(revealDeadline)}</dd>
+                    <dd className="font-medium text-[var(--chrome)]">{formatDeadline(vrfTriggerTime)}</dd>
                   </div>
                 )}
               </dl>
@@ -955,6 +1092,398 @@ export default function PoolPage() {
                 />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FAQ Modal */}
+      {showFAQ && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowFAQ(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+            <div className="card p-6 md:p-8 border border-[var(--steel)]/30">
+              {/* Close button */}
+              <button
+                onClick={() => setShowFAQ(false)}
+                className="absolute top-4 right-4 p-2 rounded-lg hover:bg-[var(--steel)]/20 transition-colors text-[var(--smoke)] hover:text-[var(--chrome)]"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-xl bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30 flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                    <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
+                    HOW IT WORKS
+                  </h2>
+                  <p className="text-sm text-[var(--smoke)]">Everything you need to know</p>
+                </div>
+              </div>
+
+              {/* FAQ Items */}
+              <div className="space-y-6">
+                {/* Basic Gameplay */}
+                <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  <h3 className="text-lg font-bold text-[var(--championship-gold)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    What is Super Bowl Squares?
+                  </h3>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed">
+                    Super Bowl Squares is a classic football betting game. A 10x10 grid creates 100 squares, each representing a unique combination of the last digit of each team's score. Buy squares before the game, and if your square matches the score at the end of any quarter, you win!
+                  </p>
+                </div>
+
+                {/* How to Play */}
+                <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  <h3 className="text-lg font-bold text-[var(--championship-gold)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    How do I play?
+                  </h3>
+                  <ol className="text-sm text-[var(--smoke)] space-y-2 list-decimal list-inside">
+                    <li>Connect your wallet and buy one or more squares</li>
+                    <li>Wait for the purchase deadline - numbers are then randomly assigned</li>
+                    <li>Watch the game! Check if your numbers match the score at each quarter</li>
+                    <li>If you win, claim your payout directly to your wallet</li>
+                  </ol>
+                </div>
+
+                {/* Random Numbers */}
+                <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  <h3 className="text-lg font-bold text-[var(--championship-gold)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    How are numbers assigned?
+                  </h3>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed">
+                    Numbers (0-9) are randomly assigned to rows and columns after the purchase deadline. This uses <span className="text-blue-400 font-medium">Chainlink VRF</span> (Verifiable Random Function) - a cryptographically secure randomness source that's provably fair and tamper-proof. No one, including the pool creator, can predict or manipulate which numbers go where.
+                  </p>
+                </div>
+
+                {/* Winning */}
+                <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  <h3 className="text-lg font-bold text-[var(--championship-gold)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    How do I win?
+                  </h3>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed mb-3">
+                    You win if your square's numbers match the last digit of each team's score at the end of a quarter. For example, if the score is Patriots 17, Seahawks 14, the winning square is where row "7" meets column "4".
+                  </p>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed">
+                    Payouts happen at Q1, Halftime, Q3, and Final - each with its own prize pool percentage.
+                  </p>
+                </div>
+
+                {/* Automation */}
+                <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                  <h3 className="text-lg font-bold text-blue-400 mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    How is this automated?
+                  </h3>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed mb-3">
+                    This pool runs entirely on smart contracts with Chainlink oracles:
+                  </p>
+                  <ul className="text-sm text-[var(--smoke)] space-y-2">
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-400 font-bold">•</span>
+                      <span><span className="text-blue-400 font-medium">Chainlink Automation</span> triggers number assignment at the scheduled time</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-400 font-bold">•</span>
+                      <span><span className="text-blue-400 font-medium">Chainlink VRF</span> provides verifiable randomness for fair number assignment</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-400 font-bold">•</span>
+                      <span><span className="text-blue-400 font-medium">Chainlink Functions</span> fetches real game scores from sports APIs</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Security */}
+                <div className="p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/20">
+                  <h3 className="text-lg font-bold text-[var(--turf-green)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    Is my money safe?
+                  </h3>
+                  <p className="text-sm text-[var(--smoke)] leading-relaxed">
+                    All funds are held in the smart contract - not by any person or company. The contract code is open source and verifiable. Winners can claim their payouts directly from the contract at any time after scores are settled. No one can withdraw funds except the rightful winners.
+                  </p>
+                </div>
+
+                {/* Private Pools */}
+                {isPrivate && (
+                  <div className="p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/20">
+                    <h3 className="text-lg font-bold text-[var(--championship-gold)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                      What is a private pool?
+                    </h3>
+                    <p className="text-sm text-[var(--smoke)] leading-relaxed">
+                      This is a private pool - you need the password to buy squares. The password is hashed on-chain, so only people with the correct password can participate. Great for playing with friends, family, or coworkers!
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Close button */}
+              <button
+                onClick={() => setShowFAQ(false)}
+                className="w-full mt-6 py-3 px-4 rounded-xl bg-[var(--steel)]/20 border border-[var(--steel)]/30 text-[var(--chrome)] hover:bg-[var(--steel)]/30 transition-colors font-medium"
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dev Mode Toggle Button - Only for operators */}
+      {isOperator && (
+        <button
+          onClick={() => setDevMode(!devMode)}
+          className={`fixed bottom-6 left-6 z-40 p-3 rounded-full shadow-lg transition-all ${
+            devMode
+              ? 'bg-orange-500 text-white hover:bg-orange-600'
+              : 'bg-[var(--steel)]/80 text-[var(--smoke)] hover:bg-[var(--steel)] hover:text-[var(--chrome)]'
+          }`}
+          title="Toggle Dev Mode"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+        </button>
+      )}
+
+      {/* Dev Mode Panel */}
+      {isOperator && devMode && (
+        <div className="fixed bottom-20 left-6 z-40 w-80 max-h-[70vh] overflow-y-auto">
+          <div className="card p-4 border-orange-500/50 bg-[var(--midnight)]/95 backdrop-blur-xl shadow-[0_0_30px_rgba(249,115,22,0.2)]">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 border border-orange-500/30 flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-bold text-orange-400" style={{ fontFamily: 'var(--font-display)' }}>
+                  DEV MODE
+                </h3>
+              </div>
+              <button
+                onClick={() => setDevMode(false)}
+                className="p-1 rounded hover:bg-[var(--steel)]/30 text-[var(--smoke)] hover:text-[var(--chrome)] transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Pool State */}
+            <div className="mb-4 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+              <p className="text-xs text-[var(--smoke)] mb-1">Pool State</p>
+              <p className="text-sm font-bold text-[var(--chrome)]">{POOL_STATE_LABELS[poolInfo.state]}</p>
+            </div>
+
+            {/* VRF Controls */}
+            <div className="mb-4">
+              <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">VRF CONTROLS</h4>
+              <div className="space-y-2 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[var(--smoke)]">VRF Requested</span>
+                  <span className={vrfStatus?.vrfRequested ? 'text-[var(--turf-green)]' : 'text-[var(--smoke)]'}>
+                    {vrfStatus?.vrfRequested ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                {vrfStatus?.vrfRequested && vrfStatus.vrfRequestId !== BigInt(0) && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[var(--smoke)]">Request ID</span>
+                    <span className="text-[var(--chrome)] font-mono text-[10px]">
+                      {vrfStatus.vrfRequestId.toString().slice(0, 8)}...
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-[var(--smoke)]">Numbers Assigned</span>
+                  <span className={vrfStatus?.numbersAssigned ? 'text-[var(--turf-green)]' : 'text-[var(--smoke)]'}>
+                    {vrfStatus?.numbersAssigned ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                {poolInfo.state === PoolState.OPEN && !vrfStatus?.vrfRequested && (
+                  <button
+                    onClick={closePoolAndRequestVRF}
+                    disabled={isVRFPending || isVRFConfirming}
+                    className="w-full mt-2 py-2 px-3 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isVRFPending ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Confirm in Wallet...
+                      </span>
+                    ) : isVRFConfirming ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Processing...
+                      </span>
+                    ) : (
+                      'Assign Numbers Now'
+                    )}
+                  </button>
+                )}
+                {vrfStatus?.vrfRequested && !vrfStatus.numbersAssigned && (
+                  <p className="text-xs text-blue-400 mt-2">
+                    Waiting for VRF response (~30 sec on Sepolia)...
+                  </p>
+                )}
+                {vrfError && (
+                  <p className="text-xs text-[var(--danger)] mt-2">{vrfError.message}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Score Controls */}
+            <div className="mb-4">
+              <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">SCORE CONTROLS</h4>
+              <div className="space-y-3 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                <div>
+                  <label className="text-xs text-[var(--smoke)] mb-1 block">Quarter</label>
+                  <select
+                    value={devQuarter}
+                    onChange={(e) => setDevQuarter(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] text-sm focus:outline-none focus:border-orange-500/50"
+                  >
+                    <option value={0}>Q1</option>
+                    <option value={1}>Q2 (Halftime)</option>
+                    <option value={2}>Q3</option>
+                    <option value={3}>Final</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-[var(--smoke)] mb-1 block">{poolInfo.teamAName}</label>
+                    <input
+                      type="number"
+                      value={devScoreA}
+                      onChange={(e) => setDevScoreA(e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] text-sm focus:outline-none focus:border-orange-500/50"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-[var(--smoke)] mb-1 block">{poolInfo.teamBName}</label>
+                    <input
+                      type="number"
+                      value={devScoreB}
+                      onChange={(e) => setDevScoreB(e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] text-sm focus:outline-none focus:border-orange-500/50"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const scoreA = parseInt(devScoreA) || 0;
+                    const scoreB = parseInt(devScoreB) || 0;
+                    submitScore(devQuarter, scoreA, scoreB);
+                  }}
+                  disabled={
+                    poolInfo.state < PoolState.NUMBERS_ASSIGNED ||
+                    isSubmitScorePending ||
+                    isSubmitScoreConfirming ||
+                    (devScoreA === '' && devScoreB === '')
+                  }
+                  className="w-full py-2 px-3 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitScorePending ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Confirm in Wallet...
+                    </span>
+                  ) : isSubmitScoreConfirming ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Submitting...
+                    </span>
+                  ) : (
+                    'Submit Score'
+                  )}
+                </button>
+                {poolInfo.state < PoolState.NUMBERS_ASSIGNED && (
+                  <p className="text-xs text-[var(--smoke)]">
+                    Numbers must be assigned before submitting scores.
+                  </p>
+                )}
+                {submitScoreError && (
+                  <p className="text-xs text-[var(--danger)] mt-2">{submitScoreError.message}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Numbers Display */}
+            {rowNumbers && colNumbers && (
+              <div className="mb-4">
+                <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">ASSIGNED NUMBERS</h4>
+                <div className="space-y-2 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  <div>
+                    <span className="text-xs text-[var(--smoke)]">Rows ({poolInfo.teamAName}):</span>
+                    <p className="text-xs font-mono text-[var(--chrome)]">{rowNumbers.join(', ')}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-[var(--smoke)]">Cols ({poolInfo.teamBName}):</span>
+                    <p className="text-xs font-mono text-[var(--chrome)]">{colNumbers.join(', ')}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Current Scores & Winners */}
+            {poolInfo.state >= PoolState.Q1_SCORED && (
+              <div>
+                <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">SCORES & WINNERS</h4>
+                <div className="space-y-2 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                  {[
+                    { quarter: Quarter.Q1, label: 'Q1', score: q1Score, winner: q1Winner, payout: q1Payout, minState: PoolState.Q1_SCORED },
+                    { quarter: Quarter.Q2, label: 'Q2', score: q2Score, winner: q2Winner, payout: q2Payout, minState: PoolState.Q2_SCORED },
+                    { quarter: Quarter.Q3, label: 'Q3', score: q3Score, winner: q3Winner, payout: q3Payout, minState: PoolState.Q3_SCORED },
+                    { quarter: Quarter.FINAL, label: 'Final', score: finalScore, winner: finalWinner, payout: finalPayout, minState: PoolState.FINAL_SCORED },
+                  ].map(({ label, score, winner, payout, minState }) => {
+                    if (poolInfo.state < minState) return null;
+                    const winningRow = score ? score.teamAScore % 10 : null;
+                    const winningCol = score ? score.teamBScore % 10 : null;
+                    return (
+                      <div key={label} className="text-xs border-b border-[var(--steel)]/10 pb-2 last:border-0 last:pb-0">
+                        <div className="flex justify-between mb-1">
+                          <span className="font-bold text-[var(--championship-gold)]">{label}</span>
+                          {score && (
+                            <span className="text-[var(--chrome)]">
+                              {score.teamAScore}-{score.teamBScore}
+                            </span>
+                          )}
+                        </div>
+                        {score && winningRow !== null && winningCol !== null && (
+                          <div className="text-[var(--smoke)]">
+                            Position: ({winningRow}, {winningCol})
+                          </div>
+                        )}
+                        {winner && winner !== '0x0000000000000000000000000000000000000000' && (
+                          <div className="text-[var(--turf-green)] font-mono text-[10px]">
+                            {winner.slice(0, 6)}...{winner.slice(-4)}
+                            {payout && ` (${formatAmount(payout)} ${paymentToken.symbol})`}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -6,12 +6,16 @@ import {SquaresPool} from "../src/SquaresPool.sol";
 import {SquaresFactory} from "../src/SquaresFactory.sol";
 import {ISquaresPool} from "../src/interfaces/ISquaresPool.sol";
 import {MockFunctionsRouter} from "./mocks/MockFunctionsRouter.sol";
+import {MockVRFCoordinatorV2Plus} from "./mocks/MockVRFCoordinatorV2Plus.sol";
+import {MockAutomationRegistrar} from "./mocks/MockAutomationRegistrar.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract SquaresPoolTest is Test {
     SquaresFactory public factory;
     SquaresPool public pool;
     MockFunctionsRouter public functionsRouter;
+    MockVRFCoordinatorV2Plus public vrfCoordinator;
+    MockAutomationRegistrar public automationRegistrar;
     MockERC20 public paymentToken;
 
     address public operator = address(0x1);
@@ -20,17 +24,25 @@ contract SquaresPoolTest is Test {
     address public charlie = address(0x4);
 
     uint256 public constant SQUARE_PRICE = 0.1 ether;
+    uint256 public constant CREATION_FEE = 0.1 ether; // Must cover automationFundingAmount (default 0.1 ETH)
 
     function setUp() public {
         // Deploy mocks
         functionsRouter = new MockFunctionsRouter();
+        vrfCoordinator = new MockVRFCoordinatorV2Plus();
+        automationRegistrar = new MockAutomationRegistrar();
         paymentToken = new MockERC20("Test Token", "TEST", 18);
 
-        // Deploy factory with Chainlink Functions config
+        // Deploy factory with Chainlink config
         factory = new SquaresFactory(
             address(functionsRouter),
-            1, // subscriptionId
-            bytes32("test-don-id")
+            address(vrfCoordinator),
+            address(automationRegistrar),
+            1, // Functions subscriptionId
+            bytes32("test-don-id"),
+            1, // VRF subscriptionId
+            bytes32("test-key-hash"),
+            CREATION_FEE
         );
 
         // Create pool with ETH payments
@@ -43,12 +55,13 @@ contract SquaresPoolTest is Test {
             teamAName: "Patriots",
             teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: bytes32(0) // Public pool
         });
 
+        vm.deal(operator, 100 ether);
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         pool = SquaresPool(payable(poolAddr));
 
         // Fund accounts
@@ -176,75 +189,99 @@ contract SquaresPoolTest is Test {
         pool.buySquares{value: SQUARE_PRICE}(positions, "");
     }
 
-    // ============ Pool Close Tests ============
+    // ============ VRF + Automation Tests ============
 
-    function test_ClosePool() public {
-        vm.prank(operator);
-        pool.closePool();
+    function test_CheckUpkeep_ReturnsFalseBeforeTriggerTime() public {
+        // Buy a square first
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
 
+        (bool upkeepNeeded,) = pool.checkUpkeep("");
+        assertFalse(upkeepNeeded, "Upkeep should not be needed before trigger time");
+    }
+
+    function test_CheckUpkeep_ReturnsFalseWithNoSales() public {
+        // Fast forward to trigger time
+        vm.warp(block.timestamp + 8 days);
+
+        (bool upkeepNeeded,) = pool.checkUpkeep("");
+        assertFalse(upkeepNeeded, "Upkeep should not be needed with no sales");
+    }
+
+    function test_CheckUpkeep_ReturnsTrueWhenReady() public {
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
+
+        // Fast forward to trigger time
+        vm.warp(block.timestamp + 8 days);
+
+        (bool upkeepNeeded,) = pool.checkUpkeep("");
+        assertTrue(upkeepNeeded, "Upkeep should be needed when ready");
+    }
+
+    function test_PerformUpkeep_ClosesPoolAndRequestsVRF() public {
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
+
+        // Fast forward to trigger time
+        vm.warp(block.timestamp + 8 days);
+
+        // Perform upkeep
+        pool.performUpkeep("");
+
+        // Check state is CLOSED
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.CLOSED));
+
+        // Check VRF was requested
+        assertTrue(pool.vrfRequested(), "VRF should be requested");
+        assertTrue(pool.vrfRequestId() > 0, "VRF request ID should be set");
     }
 
-    function test_ClosePool_RevertIfNotOperator() public {
+    function test_PerformUpkeep_RevertIfNotReady() public {
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
         vm.prank(alice);
-        vm.expectRevert(SquaresPool.OnlyOperator.selector);
-        pool.closePool();
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
+
+        // Try to perform upkeep before trigger time
+        vm.expectRevert(SquaresPool.VRFTriggerTimeNotReached.selector);
+        pool.performUpkeep("");
     }
 
-    function test_ClosePool_RevertIfAlreadyClosed() public {
-        vm.prank(operator);
-        pool.closePool();
+    function test_PerformUpkeep_RevertIfNoSales() public {
+        // Fast forward to trigger time
+        vm.warp(block.timestamp + 8 days);
 
-        vm.prank(operator);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                SquaresPool.InvalidState.selector,
-                ISquaresPool.PoolState.CLOSED,
-                ISquaresPool.PoolState.OPEN
-            )
-        );
-        pool.closePool();
+        // Try to perform upkeep with no sales
+        vm.expectRevert(SquaresPool.NoSquaresSold.selector);
+        pool.performUpkeep("");
     }
 
-    // ============ Commit-Reveal Tests ============
+    function test_VRFCallback_AssignsNumbers() public {
+        _setupVRFRequested();
 
-    function test_CommitRandomness() public {
-        vm.prank(operator);
-        pool.closePool();
+        // Fulfill VRF request
+        uint256 randomness = 12345678901234567890;
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), randomness);
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
-
-        assertEq(pool.commitment(), commitment);
-        assertEq(pool.commitBlock(), block.number);
-    }
-
-    function test_RevealRandomness() public {
-        vm.prank(operator);
-        pool.closePool();
-
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
-
-        // Mine a block to allow reveal
-        vm.roll(block.number + 1);
-
-        vm.prank(operator);
-        pool.revealRandomness(seed);
-
+        // Check state is NUMBERS_ASSIGNED
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
 
+        // Check numbers are assigned and valid
         (uint8[10] memory rows, uint8[10] memory cols) = pool.getNumbers();
 
-        // Verify all numbers 0-9 are present in rows
+        // Verify rows is a valid permutation of 0-9
         bool[10] memory rowSeen;
         for (uint8 i = 0; i < 10; i++) {
             rowSeen[rows[i]] = true;
@@ -253,7 +290,7 @@ contract SquaresPoolTest is Test {
             assertTrue(rowSeen[i], "Missing row number");
         }
 
-        // Verify all numbers 0-9 are present in cols
+        // Verify cols is a valid permutation of 0-9
         bool[10] memory colSeen;
         for (uint8 i = 0; i < 10; i++) {
             colSeen[cols[i]] = true;
@@ -263,83 +300,63 @@ contract SquaresPoolTest is Test {
         }
     }
 
-    function test_RevealTooEarly() public {
-        vm.prank(operator);
-        pool.closePool();
+    function test_ClosePoolAndRequestVRF_OperatorFallback() public {
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
+        // Operator manually triggers (no need to wait for trigger time)
         vm.prank(operator);
-        pool.commitRandomness(commitment);
+        pool.closePoolAndRequestVRF();
 
-        // Try to reveal in same block (should fail)
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.RevealTooEarly.selector);
-        pool.revealRandomness(seed);
+        // Check state is CLOSED
+        (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.CLOSED));
+
+        // Check VRF was requested
+        assertTrue(pool.vrfRequested(), "VRF should be requested");
     }
 
-    function test_RevealTooLate() public {
-        vm.prank(operator);
-        pool.closePool();
+    function test_ClosePoolAndRequestVRF_RevertIfNotOperator() public {
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
-
-        // Skip 257 blocks (blockhash returns 0 for blocks older than 256)
-        vm.roll(block.number + 257);
-
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.RevealTooLate.selector);
-        pool.revealRandomness(seed);
+        vm.prank(alice);
+        vm.expectRevert(SquaresPool.OnlyOperator.selector);
+        pool.closePoolAndRequestVRF();
     }
 
-    function test_InvalidReveal() public {
+    function test_ClosePoolAndRequestVRF_RevertIfNoSales() public {
         vm.prank(operator);
-        pool.closePool();
-
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
-
-        // Mine a block
-        vm.roll(block.number + 1);
-
-        // Try to reveal with wrong seed
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.InvalidReveal.selector);
-        pool.revealRandomness(99999);
+        vm.expectRevert(SquaresPool.NoSquaresSold.selector);
+        pool.closePoolAndRequestVRF();
     }
 
-    function test_AlreadyCommitted() public {
-        vm.prank(operator);
-        pool.closePool();
+    function test_GetVRFStatus() public {
+        (uint256 triggerTime, bool requested, uint256 requestId, bool numbersAssigned) = pool.getVRFStatus();
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
+        assertEq(triggerTime, block.timestamp + 8 days);
+        assertFalse(requested);
+        assertEq(requestId, 0);
+        assertFalse(numbersAssigned);
 
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
+        // After VRF is requested
+        _setupVRFRequested();
 
-        // Try to commit again
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.AlreadyCommitted.selector);
-        pool.commitRandomness(commitment);
-    }
+        (triggerTime, requested, requestId, numbersAssigned) = pool.getVRFStatus();
+        assertTrue(requested);
+        assertTrue(requestId > 0);
+        assertFalse(numbersAssigned);
 
-    function test_NotCommitted() public {
-        vm.prank(operator);
-        pool.closePool();
+        // After VRF is fulfilled
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), 12345);
 
-        // Try to reveal without committing first
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.NotCommitted.selector);
-        pool.revealRandomness(12345);
+        (triggerTime, requested, requestId, numbersAssigned) = pool.getVRFStatus();
+        assertTrue(numbersAssigned);
     }
 
     // ============ Score Submission Tests ============
@@ -389,7 +406,7 @@ contract SquaresPoolTest is Test {
     function test_ClaimPayout() public {
         // Buy all squares with alice
         _buyAllSquaresWithAlice();
-        _setupForScoring();
+        _setupForScoringWithPool(pool);
 
         // Submit Q1 score via operator
         vm.prank(operator);
@@ -414,7 +431,7 @@ contract SquaresPoolTest is Test {
 
     function test_ClaimPayout_RevertIfNotWinner() public {
         _buyAllSquaresWithAlice();
-        _setupForScoring();
+        _setupForScoringWithPool(pool);
 
         vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
@@ -426,7 +443,7 @@ contract SquaresPoolTest is Test {
 
     function test_ClaimPayout_RevertIfAlreadyClaimed() public {
         _buyAllSquaresWithAlice();
-        _setupForScoring();
+        _setupForScoringWithPool(pool);
 
         vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
@@ -463,27 +480,20 @@ contract SquaresPoolTest is Test {
         vm.prank(bob);
         pool.buySquares{value: 0.5 ether}(bobSquares, "");
 
-        // 2. Close pool and commit randomness
-        vm.prank(operator);
-        pool.closePool();
+        // 2. Fast forward to trigger time and perform upkeep
+        vm.warp(block.timestamp + 8 days);
+        pool.performUpkeep("");
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
-
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
-
-        // 3. Mine a block and reveal randomness
-        vm.roll(block.number + 1);
-
-        vm.prank(operator);
-        pool.revealRandomness(seed);
-
-        // 4. Game is ready for scoring
         (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.CLOSED));
+
+        // 3. VRF callback assigns numbers
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), 12345678901234567890);
+
+        (, state, , , , , ,) = pool.getPoolInfo();
         assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
 
-        // 5. Submit scores for all quarters
+        // 4. Submit scores for all quarters
         vm.prank(operator);
         pool.submitScore(ISquaresPool.Quarter.Q1, 7, 3);
 
@@ -513,12 +523,12 @@ contract SquaresPoolTest is Test {
             teamAName: "Team A",
             teamBName: "Team B",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: bytes32(0) // Public pool
         });
 
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         SquaresPool erc20Pool = SquaresPool(payable(poolAddr));
 
         // Mint and approve tokens
@@ -541,21 +551,32 @@ contract SquaresPoolTest is Test {
 
     // ============ Helper Functions ============
 
+    function _setupVRFRequested() internal {
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: SQUARE_PRICE}(positions, "");
+
+        // Fast forward and trigger
+        vm.warp(block.timestamp + 8 days);
+        pool.performUpkeep("");
+    }
+
     function _setupForScoring() internal {
-        vm.prank(operator);
-        pool.closePool();
+        _setupVRFRequested();
 
-        uint256 seed = 12345;
-        bytes32 commitment = keccak256(abi.encodePacked(seed));
+        // Fulfill VRF
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), 12345);
+    }
 
-        vm.prank(operator);
-        pool.commitRandomness(commitment);
+    function _setupForScoringWithPool(SquaresPool targetPool) internal {
+        // Fast forward and trigger
+        vm.warp(block.timestamp + 8 days);
+        targetPool.performUpkeep("");
 
-        // Mine a block to allow reveal
-        vm.roll(block.number + 1);
-
-        vm.prank(operator);
-        pool.revealRandomness(seed);
+        // Fulfill VRF
+        vrfCoordinator.fulfillRandomWord(targetPool.vrfRequestId(), 12345);
     }
 
     function _buyAllSquaresWithAlice() internal {
@@ -569,12 +590,12 @@ contract SquaresPoolTest is Test {
             teamAName: "Patriots",
             teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: bytes32(0) // Public pool
         });
 
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         pool = SquaresPool(payable(poolAddr));
 
         // Buy all 100 squares
@@ -603,12 +624,12 @@ contract SquaresPoolTest is Test {
             teamAName: "Patriots",
             teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: pwHash
         });
 
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         SquaresPool privatePool = SquaresPool(payable(poolAddr));
 
         // Verify pool is private
@@ -639,12 +660,12 @@ contract SquaresPoolTest is Test {
             teamAName: "Patriots",
             teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: pwHash
         });
 
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         SquaresPool privatePool = SquaresPool(payable(poolAddr));
 
         // Try to buy with wrong password
@@ -670,12 +691,12 @@ contract SquaresPoolTest is Test {
             teamAName: "Patriots",
             teamBName: "Seahawks",
             purchaseDeadline: block.timestamp + 7 days,
-            revealDeadline: block.timestamp + 8 days,
+            vrfTriggerTime: block.timestamp + 8 days,
             passwordHash: pwHash
         });
 
         vm.prank(operator);
-        address poolAddr = factory.createPool(params);
+        address poolAddr = factory.createPool{value: CREATION_FEE}(params);
         SquaresPool privatePool = SquaresPool(payable(poolAddr));
 
         // Try to buy with empty password

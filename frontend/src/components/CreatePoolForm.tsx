@@ -14,9 +14,9 @@ import { Token, ETH_TOKEN, isNativeToken, parseTokenAmount, getTokensForChain } 
 // Super Bowl LX: February 8, 2026 at 6:30 PM EST
 const SUPER_BOWL_DATE = new Date('2026-02-08T18:30:00-05:00');
 const SUPER_BOWL_TIMESTAMP = Math.floor(SUPER_BOWL_DATE.getTime() / 1000);
-// Purchase deadline & random numbers revealed 2 days before game
+// Purchase deadline & VRF trigger time 2 days before game
 const PURCHASE_DEADLINE_TIMESTAMP = SUPER_BOWL_TIMESTAMP - (2 * 24 * 60 * 60);
-const REVEAL_DEADLINE_TIMESTAMP = PURCHASE_DEADLINE_TIMESTAMP;
+const VRF_TRIGGER_TIMESTAMP = PURCHASE_DEADLINE_TIMESTAMP;
 
 // Fixed teams for Super Bowl LX
 const TEAM_A = 'Patriots';  // Rows
@@ -169,7 +169,7 @@ export function CreatePoolForm() {
       teamAName: TEAM_A,
       teamBName: TEAM_B,
       purchaseDeadline: BigInt(PURCHASE_DEADLINE_TIMESTAMP),
-      revealDeadline: BigInt(REVEAL_DEADLINE_TIMESTAMP),
+      vrfTriggerTime: BigInt(VRF_TRIGGER_TIMESTAMP),
       passwordHash,
     };
 
@@ -478,7 +478,7 @@ export function CreatePoolForm() {
             </div>
             <p className="text-[var(--chrome)] font-bold">February 6, 2026 at 6:30 PM EST</p>
             <p className="text-xs text-[var(--smoke)] mt-1 opacity-70">
-              Squares close 2 days before kickoff. Random numbers assigned at this time.
+              Squares close 2 days before kickoff. Random numbers assigned automatically via Chainlink VRF.
             </p>
           </div>
         </div>
@@ -831,9 +831,19 @@ export function CreatePoolForm() {
 
           {/* Deadline */}
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-2">
               <span className="text-[var(--smoke)]">Purchase Deadline</span>
               <span className="font-bold text-[var(--chrome)]">Feb 6, 2026 @ 6:30 PM EST</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--smoke)]">Numbers Assigned</span>
+              <span className="font-medium text-blue-400 flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Via Chainlink Automation
+              </span>
             </div>
           </div>
         </div>

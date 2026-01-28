@@ -4,16 +4,21 @@ pragma solidity ^0.8.24;
 import {ISquaresPool} from "./interfaces/ISquaresPool.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IFunctionsRouter, IFunctionsClient, FunctionsRequest, FunctionsRequestLib} from "./interfaces/IFunctionsClient.sol";
+import {IVRFCoordinatorV2Plus, VRFConsumerBaseV2Plus, VRFV2PlusClient} from "./interfaces/IVRFCoordinatorV2Plus.sol";
+import {AutomationCompatibleInterface} from "./interfaces/IAutomationCompatible.sol";
 import {SquaresLib} from "./libraries/SquaresLib.sol";
 
 /// @title SquaresPool
-/// @notice Super Bowl Squares with commit-reveal randomness + Chainlink Functions for multi-source score verification
-contract SquaresPool is ISquaresPool, IFunctionsClient {
+/// @notice Super Bowl Squares with Chainlink VRF + Automation for randomness + Chainlink Functions for score verification
+contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     using FunctionsRequestLib for FunctionsRequest;
 
     // ============ Constants ============
     uint32 private constant FUNCTIONS_CALLBACK_GAS_LIMIT = 300000;
     uint16 private constant FUNCTIONS_DATA_VERSION = 1;
+    uint16 private constant VRF_REQUEST_CONFIRMATIONS = 3;
+    uint32 private constant VRF_NUM_WORDS = 1;
+    uint32 private constant VRF_CALLBACK_GAS_LIMIT = 500000;
 
     // ============ Immutables ============
     address public immutable factory;
@@ -29,12 +34,16 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
     string public teamAName;
     string public teamBName;
     uint256 public purchaseDeadline;
-    uint256 public revealDeadline;
+    uint256 public vrfTriggerTime;
 
     // Chainlink Functions Configuration
     uint64 public functionsSubscriptionId;
     bytes32 public functionsDonId;
     string public functionsSource; // JavaScript source code
+
+    // Chainlink VRF Configuration
+    uint256 public vrfSubscriptionId;
+    bytes32 public vrfKeyHash;
 
     // ============ State ============
     PoolState public state;
@@ -46,9 +55,9 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
     uint256 public totalPot;
     uint256 public squaresSold;
 
-    // Commit-reveal state
-    bytes32 public commitment;
-    uint256 public commitBlock;
+    // VRF state
+    uint256 public vrfRequestId;
+    bool public vrfRequested;
 
     // Score tracking
     mapping(Quarter => Score) public scores;
@@ -66,12 +75,8 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
     error InsufficientPayment(uint256 sent, uint256 required);
     error TransferFailed();
     error PurchaseDeadlinePassed();
-    error RevealDeadlinePassed();
-    error AlreadyCommitted();
-    error NotCommitted();
-    error RevealTooEarly();
-    error RevealTooLate();
-    error InvalidReveal();
+    error VRFTriggerTimeNotReached();
+    error VRFAlreadyRequested();
     error OnlyOperator();
     error OnlyFactory();
     error OnlyFunctionsRouter();
@@ -83,6 +88,7 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
     error ScoreVerificationFailed();
     error InvalidQuarterProgression();
     error InvalidPassword();
+    error NoSquaresSold();
 
     // ============ Modifiers ============
     modifier onlyOperator() {
@@ -108,8 +114,9 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
     // ============ Constructor ============
     constructor(
         address _functionsRouter,
+        address _vrfCoordinator,
         address _operator
-    ) {
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         factory = msg.sender;
         operator = _operator;
         functionsRouter = IFunctionsRouter(_functionsRouter);
@@ -130,7 +137,7 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
         teamAName = params.teamAName;
         teamBName = params.teamBName;
         purchaseDeadline = params.purchaseDeadline;
-        revealDeadline = params.revealDeadline;
+        vrfTriggerTime = params.vrfTriggerTime;
         passwordHash = params.passwordHash;
     }
 
@@ -144,6 +151,15 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
         functionsSubscriptionId = _subscriptionId;
         functionsDonId = _donId;
         functionsSource = _source;
+    }
+
+    /// @notice Set Chainlink VRF configuration (called by factory)
+    function setVRFConfig(
+        uint256 _subscriptionId,
+        bytes32 _keyHash
+    ) external onlyFactory {
+        vrfSubscriptionId = _subscriptionId;
+        vrfKeyHash = _keyHash;
     }
 
     // ============ Player Functions ============
@@ -214,36 +230,79 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
         emit PayoutClaimed(msg.sender, quarter, payout);
     }
 
-    // ============ Operator Functions ============
+    // ============ Chainlink Automation Functions ============
 
-    function closePool() external onlyOperator inState(PoolState.OPEN) {
+    /// @notice Check if upkeep is needed (called by Chainlink Automation)
+    /// @dev Returns true when vrfTriggerTime is reached and pool has sales
+    function checkUpkeep(bytes calldata /* checkData */)
+        external
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory performData)
+    {
+        upkeepNeeded = (
+            state == PoolState.OPEN &&
+            block.timestamp >= vrfTriggerTime &&
+            squaresSold > 0 &&
+            !vrfRequested
+        );
+        performData = "";
+    }
+
+    /// @notice Perform the upkeep (called by Chainlink Automation)
+    /// @dev Closes pool and requests VRF randomness
+    function performUpkeep(bytes calldata /* performData */) external override {
+        // Re-validate conditions
+        if (state != PoolState.OPEN) revert InvalidState(state, PoolState.OPEN);
+        if (block.timestamp < vrfTriggerTime) revert VRFTriggerTimeNotReached();
+        if (squaresSold == 0) revert NoSquaresSold();
+        if (vrfRequested) revert VRFAlreadyRequested();
+
+        _closeAndRequestVRF();
+    }
+
+    /// @notice Manual fallback for operator to close pool and request VRF
+    /// @dev Can be called after vrfTriggerTime if automation fails
+    function closePoolAndRequestVRF() external onlyOperator inState(PoolState.OPEN) {
+        if (squaresSold == 0) revert NoSquaresSold();
+        if (vrfRequested) revert VRFAlreadyRequested();
+
+        _closeAndRequestVRF();
+    }
+
+    /// @notice Internal function to close pool and request VRF
+    function _closeAndRequestVRF() internal {
         state = PoolState.CLOSED;
         emit PoolClosed(block.timestamp);
+
+        // Request VRF randomness with native payment
+        vrfRequestId = vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: vrfKeyHash,
+                subId: vrfSubscriptionId,
+                requestConfirmations: VRF_REQUEST_CONFIRMATIONS,
+                callbackGasLimit: VRF_CALLBACK_GAS_LIMIT,
+                numWords: VRF_NUM_WORDS,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: true})
+                )
+            })
+        );
+
+        vrfRequested = true;
+        emit VRFRequested(vrfRequestId);
     }
 
-    function commitRandomness(bytes32 _commitment) external onlyOperator inState(PoolState.CLOSED) {
-        if (block.timestamp > revealDeadline) revert RevealDeadlinePassed();
-        if (commitment != bytes32(0)) revert AlreadyCommitted();
+    // ============ Chainlink VRF Callback ============
 
-        commitment = _commitment;
-        commitBlock = block.number;
+    /// @notice VRF callback to assign random numbers
+    /// @param requestId The VRF request ID
+    /// @param randomWords The random words from VRF
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
+        if (requestId != vrfRequestId) return;
+        if (state != PoolState.CLOSED) return;
 
-        emit RandomnessCommitted(_commitment, block.number);
-    }
-
-    function revealRandomness(uint256 seed) external onlyOperator inState(PoolState.CLOSED) {
-        if (commitment == bytes32(0)) revert NotCommitted();
-        if (block.number <= commitBlock) revert RevealTooEarly();
-
-        bytes32 commitBlockHash = blockhash(commitBlock);
-        if (commitBlockHash == bytes32(0)) revert RevealTooLate();
-
-        if (keccak256(abi.encodePacked(seed)) != commitment) revert InvalidReveal();
-
-        // Generate final randomness by combining seed with blockhash
-        uint256 randomness = uint256(keccak256(abi.encodePacked(seed, commitBlockHash)));
-
-        emit RandomnessRevealed(seed, commitBlockHash);
+        uint256 randomness = randomWords[0];
 
         // Use randomness for row/column assignment
         rowNumbers = SquaresLib.fisherYatesShuffle(randomness);
@@ -311,11 +370,6 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
         (address winner, uint256 payout) = getWinner(quarter);
         emit ScoreSubmitted(quarter, teamAScore, teamBScore, bytes32(0));
         emit ScoreSettled(quarter, winner, payout);
-    }
-
-    /// @notice Legacy function - not needed with Chainlink Functions (scores settle immediately)
-    function settleScore(Quarter quarter) external {
-        // No-op - scores are settled immediately when verified
     }
 
     // ============ Chainlink Functions Callback ============
@@ -447,6 +501,15 @@ contract SquaresPool is ISquaresPool, IFunctionsClient {
 
     function isPrivate() external view returns (bool) {
         return passwordHash != bytes32(0);
+    }
+
+    function getVRFStatus() external view returns (
+        uint256 _vrfTriggerTime,
+        bool _vrfRequested,
+        uint256 _vrfRequestId,
+        bool _numbersAssigned
+    ) {
+        return (vrfTriggerTime, vrfRequested, vrfRequestId, numbersSet);
     }
 
     // ============ Receive ETH ============

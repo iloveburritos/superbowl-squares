@@ -18,25 +18,28 @@ export const SquaresPoolABI = [
     stateMutability: 'nonpayable',
   },
 
-  // Operator functions
+  // VRF/Automation functions
   {
     type: 'function',
-    name: 'closePool',
+    name: 'closePoolAndRequestVRF',
     inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
   },
   {
     type: 'function',
-    name: 'commitRandomness',
-    inputs: [{ name: '_commitment', type: 'bytes32' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
+    name: 'checkUpkeep',
+    inputs: [{ name: 'checkData', type: 'bytes' }],
+    outputs: [
+      { name: 'upkeepNeeded', type: 'bool' },
+      { name: 'performData', type: 'bytes' },
+    ],
+    stateMutability: 'view',
   },
   {
     type: 'function',
-    name: 'revealRandomness',
-    inputs: [{ name: 'seed', type: 'uint256' }],
+    name: 'performUpkeep',
+    inputs: [{ name: 'performData', type: 'bytes' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -57,13 +60,6 @@ export const SquaresPoolABI = [
       { name: 'teamAScore', type: 'uint8' },
       { name: 'teamBScore', type: 'uint8' },
     ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'settleScore',
-    inputs: [{ name: 'quarter', type: 'uint8' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -139,6 +135,18 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
+    name: 'getVRFStatus',
+    inputs: [],
+    outputs: [
+      { name: 'vrfTriggerTime', type: 'uint256' },
+      { name: 'vrfRequested', type: 'bool' },
+      { name: 'vrfRequestId', type: 'uint256' },
+      { name: 'numbersAssigned', type: 'bool' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'hasClaimed',
     inputs: [
       { name: 'user', type: 'address' },
@@ -170,23 +178,30 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
-    name: 'revealDeadline',
+    name: 'vrfTriggerTime',
     inputs: [],
     outputs: [{ type: 'uint256' }],
     stateMutability: 'view',
   },
   {
     type: 'function',
-    name: 'commitment',
+    name: 'vrfRequested',
     inputs: [],
-    outputs: [{ type: 'bytes32' }],
+    outputs: [{ type: 'bool' }],
     stateMutability: 'view',
   },
   {
     type: 'function',
-    name: 'commitBlock',
+    name: 'vrfRequestId',
     inputs: [],
     outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'numbersSet',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
     stateMutability: 'view',
   },
   {
@@ -235,19 +250,8 @@ export const SquaresPoolABI = [
   },
   {
     type: 'event',
-    name: 'RandomnessCommitted',
-    inputs: [
-      { name: 'commitment', type: 'bytes32', indexed: false },
-      { name: 'commitBlock', type: 'uint256', indexed: false },
-    ],
-  },
-  {
-    type: 'event',
-    name: 'RandomnessRevealed',
-    inputs: [
-      { name: 'seed', type: 'uint256', indexed: false },
-      { name: 'blockhash_', type: 'bytes32', indexed: false },
-    ],
+    name: 'VRFRequested',
+    inputs: [{ name: 'requestId', type: 'uint256', indexed: false }],
   },
   {
     type: 'event',
