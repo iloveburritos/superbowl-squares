@@ -22,11 +22,26 @@ const REVEAL_DEADLINE_TIMESTAMP = PURCHASE_DEADLINE_TIMESTAMP;
 const TEAM_A = 'Patriots';  // Rows
 const TEAM_B = 'Seahawks';  // Columns
 
+// Block explorer URLs by chain ID
+const EXPLORER_URLS: Record<number, string> = {
+  1: 'https://etherscan.io',
+  11155111: 'https://sepolia.etherscan.io',
+  8453: 'https://basescan.org',
+  84532: 'https://sepolia.basescan.org',
+  42161: 'https://arbiscan.io',
+  421614: 'https://sepolia.arbiscan.io',
+};
+
+function getExplorerTxUrl(chainId: number | undefined, hash: string): string {
+  const baseUrl = EXPLORER_URLS[chainId || 11155111] || EXPLORER_URLS[11155111];
+  return `${baseUrl}/tx/${hash}`;
+}
+
 export function CreatePoolForm() {
   const router = useRouter();
   const { address, chainId } = useAccount();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
-  const { createPool, isPending, isConfirming, isSuccess, error, poolAddress, hash, isFactoryConfigured } = useCreatePool();
+  const { createPool, isPending, isConfirming, isSuccess, isReceiptError, error, poolAddress, hash, refetchReceipt, isFactoryConfigured } = useCreatePool();
 
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
   const [selectedToken, setSelectedToken] = useState<Token>(ETH_TOKEN);
@@ -63,6 +78,7 @@ export function CreatePoolForm() {
   const [activeSection, setActiveSection] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [canSubmit, setCanSubmit] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Prevent auto-submit when navigating to Review tab
   useEffect(() => {
@@ -392,13 +408,17 @@ export function CreatePoolForm() {
               <button
                 type="button"
                 onClick={() => setFormData(prev => ({ ...prev, isPrivate: !prev.isPrivate, password: prev.isPrivate ? '' : prev.password }))}
-                className={`relative w-14 h-7 rounded-full transition-colors ${
-                  formData.isPrivate ? 'bg-[var(--turf-green)]' : 'bg-[var(--steel)]/50'
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border ${
+                  formData.isPrivate
+                    ? 'bg-[var(--turf-green)] border-[var(--turf-green)]'
+                    : 'bg-[var(--steel)]/30 border-[var(--steel)]/60'
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                    formData.isPrivate ? 'translate-x-8' : 'translate-x-1'
+                  className={`absolute top-1/2 -translate-y-1/2 left-0.5 w-5 h-5 rounded-full shadow-md transition-all duration-200 ${
+                    formData.isPrivate
+                      ? 'translate-x-5 bg-white'
+                      : 'translate-x-0 bg-[var(--smoke)]'
                   }`}
                 />
               </button>
@@ -407,14 +427,33 @@ export function CreatePoolForm() {
             {formData.isPrivate && (
               <div className="mt-4 pt-4 border-t border-[var(--steel)]/30">
                 <label className="label">Pool Password</label>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Enter a password for your pool"
-                  className="input w-full"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Enter a password for your pool"
+                    className="input w-full pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--smoke)] hover:text-[var(--chrome)] transition-colors"
+                  >
+                    {showPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
                 <p className="text-xs text-[var(--smoke)] mt-2">
                   Share this password with people you want to invite. They'll need it to buy squares.
                 </p>
@@ -828,16 +867,48 @@ export function CreatePoolForm() {
 
       {/* Transaction Hash Display */}
       {hash && !isSuccess && (
-        <div className="p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/30">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[var(--turf-green)]/20 flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-[var(--turf-green)] border-t-transparent rounded-full animate-spin" />
+        <div className={`p-4 rounded-xl border ${isReceiptError ? 'bg-[var(--championship-gold)]/10 border-[var(--championship-gold)]/30' : 'bg-[var(--turf-green)]/10 border-[var(--turf-green)]/30'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isReceiptError ? 'bg-[var(--championship-gold)]/20' : 'bg-[var(--turf-green)]/20'}`}>
+                {isReceiptError ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                    <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <div className="w-4 h-4 border-2 border-[var(--turf-green)] border-t-transparent rounded-full animate-spin" />
+                )}
+              </div>
+              <div>
+                <p className={`font-medium ${isReceiptError ? 'text-[var(--championship-gold)]' : 'text-[var(--turf-green)]'}`}>
+                  {isReceiptError ? 'Confirmation Timeout' : 'Transaction Submitted'}
+                </p>
+                <a
+                  href={getExplorerTxUrl(chainId, hash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[var(--smoke)] hover:text-[var(--chrome)] font-mono mt-1 break-all underline"
+                >
+                  {hash.slice(0, 20)}...{hash.slice(-8)}
+                </a>
+              </div>
             </div>
-            <div>
-              <p className="text-[var(--turf-green)] font-medium">Transaction Submitted</p>
-              <p className="text-xs text-[var(--smoke)] font-mono mt-1 break-all">{hash}</p>
-            </div>
+            {(isReceiptError || isConfirming) && (
+              <button
+                type="button"
+                onClick={() => refetchReceipt?.()}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                Check Status
+              </button>
+            )}
           </div>
+          {isReceiptError && (
+            <p className="text-xs text-[var(--smoke)] mt-3">
+              Could not confirm transaction automatically. Click "Check Status" or view on Etherscan.
+            </p>
+          )}
         </div>
       )}
 
@@ -934,6 +1005,7 @@ export function CreatePoolForm() {
           poolAddress={poolAddress}
           poolName={formData.name}
           hash={hash}
+          chainId={chainId}
           onViewPool={poolAddress ? () => router.push(`/pools/${poolAddress}`) : undefined}
           onViewMyPools={() => router.push('/pools/my')}
         />
@@ -1011,15 +1083,42 @@ function SuccessModal({
   poolAddress,
   poolName,
   hash,
+  chainId,
   onViewPool,
   onViewMyPools,
 }: {
   poolAddress?: string;
   poolName: string;
   hash?: string;
+  chainId?: number;
   onViewPool?: () => void;
   onViewMyPools: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const poolUrl = poolAddress
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/pools/${poolAddress}`
+    : '';
+
+  const handleCopyLink = async () => {
+    if (poolUrl) {
+      await navigator.clipboard.writeText(poolUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShareTwitter = () => {
+    const text = `Join my Super Bowl Squares pool "${poolName}" on Super Bowl Squares! 🏈🏆`;
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(poolUrl)}`;
+    window.open(twitterUrl, '_blank', 'width=600,height=400');
+  };
+
+  const handleShareFarcaster = () => {
+    const text = `Join my Super Bowl Squares pool "${poolName}" 🏈🏆\n\n${poolUrl}`;
+    const farcasterUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
+    window.open(farcasterUrl, '_blank', 'width=600,height=700');
+  };
   return (
     <>
       <Confetti />
@@ -1061,7 +1160,7 @@ function SuccessModal({
                 <>
                   <p className="text-xs text-[var(--smoke)] mb-1">Transaction Hash</p>
                   <a
-                    href={`https://sepolia.etherscan.io/tx/${hash}`}
+                    href={getExplorerTxUrl(chainId, hash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-mono text-sm text-[var(--turf-green)] break-all hover:underline"
@@ -1141,10 +1240,55 @@ function SuccessModal({
               </button>
             )}
 
-            {/* Share text */}
-            <p className="text-xs text-[var(--smoke)] mt-4">
-              Share the pool link with friends to start filling squares!
-            </p>
+            {/* Share buttons */}
+            {poolAddress && (
+              <div className="mt-6 pt-6 border-t border-[var(--steel)]/30">
+                <p className="text-sm text-[var(--smoke)] mb-3">Share your pool with friends</p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={handleCopyLink}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--steel)]/30 border border-[var(--steel)]/50 hover:bg-[var(--steel)]/50 transition-colors text-sm"
+                  >
+                    {copied ? (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        <span className="text-[var(--turf-green)]">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleShareTwitter}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1DA1F2]/20 border border-[#1DA1F2]/50 hover:bg-[#1DA1F2]/30 transition-colors text-sm text-[#1DA1F2]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    <span>X</span>
+                  </button>
+                  <button
+                    onClick={handleShareFarcaster}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#8465CB]/20 border border-[#8465CB]/50 hover:bg-[#8465CB]/30 transition-colors text-sm text-[#8465CB]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 1000 1000" fill="currentColor">
+                      <path d="M257.778 155.556H742.222V844.444H671.111V528.889H670.414C662.554 441.677 589.258 373.333 500 373.333C410.742 373.333 337.446 441.677 329.586 528.889H328.889V844.444H257.778V155.556Z" />
+                      <path d="M128.889 253.333L157.778 351.111H182.222V746.667C169.949 746.667 160 756.616 160 768.889V795.556H155.556C143.283 795.556 133.333 805.505 133.333 817.778V844.444H382.222V817.778C382.222 805.505 372.273 795.556 360 795.556H355.556V768.889C355.556 756.616 345.606 746.667 333.333 746.667H306.667V253.333H128.889Z" />
+                      <path d="M675.556 746.667C663.283 746.667 653.333 756.616 653.333 768.889V795.556H648.889C636.616 795.556 626.667 805.505 626.667 817.778V844.444H875.556V817.778C875.556 805.505 865.606 795.556 853.333 795.556H848.889V768.889C848.889 756.616 838.94 746.667 826.667 746.667V351.111H851.111L880 253.333H702.222V746.667H675.556Z" />
+                    </svg>
+                    <span>Farcaster</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

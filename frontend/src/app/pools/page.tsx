@@ -1,16 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { useAllPools, usePoolCount } from '@/hooks/useFactory';
+import { useChainId, useSwitchChain } from 'wagmi';
+import { useAllPools, usePoolCount, useFactoryAddress } from '@/hooks/useFactory';
 import { PoolCard } from '@/components/PoolCard';
 import Link from 'next/link';
 
 const PAGE_SIZE = 12;
 
+// Only Sepolia has contracts deployed
+const SUPPORTED_CHAIN_ID = 11155111;
+const SUPPORTED_CHAIN_NAME = 'Sepolia';
+
 export default function PoolsPage() {
   const [page, setPage] = useState(0);
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const factoryAddress = useFactoryAddress();
   const { pools, total, isLoading, error } = useAllPools(page * PAGE_SIZE, PAGE_SIZE);
   const { count: poolCount } = usePoolCount();
+
+  const isWrongNetwork = !factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000';
 
   const totalPages = total ? Math.ceil(Number(total) / PAGE_SIZE) : 0;
 
@@ -60,7 +70,29 @@ export default function PoolsPage() {
 
       {/* Content */}
       <div className="container mx-auto px-6 pb-16">
-        {isLoading ? (
+        {isWrongNetwork ? (
+          <div className="card p-12 text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[var(--championship-gold)]/10 flex items-center justify-center">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-[var(--chrome)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+              WRONG NETWORK
+            </h2>
+            <p className="text-[var(--smoke)] mb-6">
+              Super Bowl Squares is currently deployed on {SUPPORTED_CHAIN_NAME}. Please switch networks to continue.
+            </p>
+            <button
+              onClick={() => switchChain({ chainId: SUPPORTED_CHAIN_ID })}
+              disabled={isSwitching}
+              className="btn-primary"
+            >
+              {isSwitching ? 'Switching...' : `Switch to ${SUPPORTED_CHAIN_NAME}`}
+            </button>
+          </div>
+        ) : isLoading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="card p-6">

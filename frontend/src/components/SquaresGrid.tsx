@@ -1,11 +1,91 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useEnsName } from 'wagmi';
 import { formatEther } from 'viem';
+import { mainnet } from 'wagmi/chains';
 import { PoolState } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo } from './Logos';
 import { Token, formatTokenAmount, isNativeToken } from '@/config/tokens';
+
+// Component to display ENS name or truncated address
+function AddressDisplay({ address, isMine }: { address: `0x${string}`; isMine: boolean }) {
+  const { data: ensName } = useEnsName({
+    address,
+    chainId: mainnet.id, // ENS is on mainnet
+  });
+
+  if (isMine) return <>YOU</>;
+
+  if (ensName) {
+    return <>{ensName}</>;
+  }
+
+  // Fallback to more of the address
+  return <>{`${address.slice(0, 6)}...${address.slice(-4)}`}</>;
+}
+
+// Square button with ENS-aware tooltip
+function SquareButton({
+  position,
+  owner,
+  isOwned,
+  isMine,
+  canSelect,
+  squarePrice,
+  tokenSymbol,
+  formatAmount,
+  getSquareClass,
+  handleSquareClick,
+  setHoveredSquare,
+}: {
+  position: number;
+  owner: `0x${string}`;
+  isOwned: boolean;
+  isMine: boolean;
+  canSelect: boolean;
+  squarePrice: bigint;
+  tokenSymbol: string;
+  formatAmount: (amount: bigint) => string;
+  getSquareClass: (position: number) => string;
+  handleSquareClick: (position: number) => void;
+  setHoveredSquare: (position: number | null) => void;
+}) {
+  const { data: ensName } = useEnsName({
+    address: isOwned ? owner : undefined,
+    chainId: mainnet.id,
+    query: {
+      enabled: isOwned,
+    },
+  });
+
+  const getTooltip = () => {
+    if (!isOwned) {
+      return `Square ${position} - ${formatAmount(squarePrice)} ${tokenSymbol}`;
+    }
+    if (ensName) {
+      return `Owned by ${ensName} (${owner.slice(0, 6)}...${owner.slice(-4)})`;
+    }
+    return `Owned by ${owner}`;
+  };
+
+  return (
+    <button
+      className={getSquareClass(position)}
+      onClick={() => handleSquareClick(position)}
+      onMouseEnter={() => setHoveredSquare(position)}
+      onMouseLeave={() => setHoveredSquare(null)}
+      disabled={!canSelect}
+      title={getTooltip()}
+    >
+      {isOwned && (
+        <span className="text-[8px] font-medium px-0.5 opacity-80 leading-tight text-center overflow-hidden max-h-full break-all line-clamp-3">
+          <AddressDisplay address={owner} isMine={isMine} />
+        </span>
+      )}
+    </button>
+  );
+}
 
 interface SquaresGridProps {
   grid: `0x${string}`[];
@@ -94,11 +174,6 @@ export function SquaresGrid({
     if (grid[position] !== ZERO_ADDRESS) return;
 
     onSquareSelect?.(position);
-  };
-
-  const truncateAddress = (addr: string) => {
-    if (addr === ZERO_ADDRESS) return '';
-    return `${addr.slice(0, 4)}..${addr.slice(-2)}`;
   };
 
   return (
@@ -200,25 +275,20 @@ export function SquaresGrid({
                       const isHovered = hoveredSquare === position;
 
                       return (
-                        <button
+                        <SquareButton
                           key={`square-${position}`}
-                          className={getSquareClass(position)}
-                          onClick={() => handleSquareClick(position)}
-                          onMouseEnter={() => setHoveredSquare(position)}
-                          onMouseLeave={() => setHoveredSquare(null)}
-                          disabled={!canSelect}
-                          title={
-                            isOwned
-                              ? `Owned by ${truncateAddress(owner)}`
-                              : `Square ${position} - ${formatAmount(squarePrice)} ${tokenSymbol}`
-                          }
-                        >
-                          {isOwned && (
-                            <span className="text-[9px] font-medium truncate px-0.5 opacity-80">
-                              {isMine ? 'YOU' : truncateAddress(owner)}
-                            </span>
-                          )}
-                        </button>
+                          position={position}
+                          owner={owner}
+                          isOwned={isOwned}
+                          isMine={isMine}
+                          canSelect={canSelect}
+                          squarePrice={squarePrice}
+                          tokenSymbol={tokenSymbol}
+                          formatAmount={formatAmount}
+                          getSquareClass={getSquareClass}
+                          handleSquareClick={handleSquareClick}
+                          setHoveredSquare={setHoveredSquare}
+                        />
                       );
                     })
                   )}

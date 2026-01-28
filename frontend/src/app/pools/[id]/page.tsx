@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain } from 'wagmi';
 import { formatEther, zeroAddress } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
@@ -28,13 +28,21 @@ import {
 import { useBuySquares } from '@/hooks/useBuySquares';
 import { useClaimPayout } from '@/hooks/useClaimPayout';
 
-import { PoolState, POOL_STATE_LABELS, Quarter, QUARTER_LABELS } from '@/lib/contracts';
+import { PoolState, POOL_STATE_LABELS, Quarter, QUARTER_LABELS, getFactoryAddress } from '@/lib/contracts';
+
+// Only Sepolia has contracts deployed
+const SUPPORTED_CHAIN_ID = 11155111;
+const SUPPORTED_CHAIN_NAME = 'Sepolia';
 
 export default function PoolPage() {
   const params = useParams();
   const poolAddress = params.id as `0x${string}`;
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+
+  const factoryAddress = getFactoryAddress(chainId);
+  const isWrongNetwork = !factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000';
 
   // Pool data
   const { poolInfo, isLoading: infoLoading, refetch: refetchInfo } = usePoolInfo(poolAddress);
@@ -62,9 +70,43 @@ export default function PoolPage() {
   // State
   const [selectedSquares, setSelectedSquares] = useState<number[]>([]);
   const [poolPassword, setPoolPassword] = useState('');
+  const [showPoolPassword, setShowPoolPassword] = useState(false);
 
   // Success toast state
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+
+  // Share state
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // Countdown state
+  const [countdown, setCountdown] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!revealDeadline) return;
+
+    const updateCountdown = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const diff = Number(revealDeadline) - now;
+
+      if (diff <= 0) {
+        setCountdown(null);
+        return;
+      }
+
+      const days = Math.floor(diff / (24 * 60 * 60));
+      const hours = Math.floor((diff % (24 * 60 * 60)) / (60 * 60));
+      const minutes = Math.floor((diff % (60 * 60)) / 60);
+      const seconds = diff % 60;
+
+      setCountdown({ days, hours, minutes, seconds });
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [revealDeadline]);
 
   // Get token info for the pool's payment token
   const paymentToken = useMemo(() => {
@@ -106,6 +148,12 @@ export default function PoolPage() {
     isConfirming: isConfirmingClaim,
   } = useClaimPayout(poolAddress);
 
+  // Reset purchase state on mount to clear any stale wagmi transaction cache
+  useEffect(() => {
+    resetPurchase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Show success toast when purchase completes
   useEffect(() => {
     if (purchaseSuccess) {
@@ -122,11 +170,12 @@ export default function PoolPage() {
   }, [purchaseSuccess, refetchGrid, refetchInfo, resetPurchase]);
 
   // After approval succeeds, continue with purchase
+  // Only trigger when step is 'approving' to prevent stale state from auto-triggering
   useEffect(() => {
-    if (isApproveSuccess && selectedSquares.length > 0 && poolInfo?.squarePrice) {
+    if (isApproveSuccess && buyStep === 'approving' && selectedSquares.length > 0 && poolInfo?.squarePrice) {
       continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice, poolPassword);
     }
-  }, [isApproveSuccess, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval, poolPassword]);
+  }, [isApproveSuccess, buyStep, selectedSquares, poolInfo?.squarePrice, continueBuyAfterApproval, poolPassword]);
 
   // Format token amount for display
   const formatAmount = (amount: bigint) => {
@@ -238,6 +287,34 @@ export default function PoolPage() {
     );
   }
 
+  if (isWrongNetwork) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="card p-12 text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[var(--championship-gold)]/10 flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+              <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-[var(--chrome)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+            WRONG NETWORK
+          </h2>
+          <p className="text-[var(--smoke)] mb-6">
+            Super Bowl Squares is currently deployed on {SUPPORTED_CHAIN_NAME}. Please switch networks to view this pool.
+          </p>
+          <button
+            onClick={() => switchChain({ chainId: SUPPORTED_CHAIN_ID })}
+            disabled={isSwitching}
+            className="btn-primary"
+          >
+            {isSwitching ? 'Switching...' : `Switch to ${SUPPORTED_CHAIN_NAME}`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!poolInfo || !grid) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -261,6 +338,46 @@ export default function PoolPage() {
 
   return (
     <div className="min-h-screen">
+      {/* Countdown Banner */}
+      {countdown && poolInfo.state === PoolState.OPEN && (
+        <div className="relative py-4 overflow-hidden bg-gradient-to-r from-[var(--midnight)] via-[var(--turf-green)]/10 to-[var(--midnight)] border-b border-[var(--turf-green)]/20">
+          <div className="container mx-auto px-6 relative text-center">
+            <p className="text-xs text-[var(--smoke)] mb-2 tracking-widest" style={{ fontFamily: 'var(--font-display)' }}>
+              NUMBERS REVEALED IN
+            </p>
+            <div className="flex items-center justify-center gap-2 md:gap-4">
+              <div className="text-center">
+                <div className="text-2xl md:text-3xl font-bold text-[var(--chrome)] tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>
+                  {countdown.days.toString().padStart(2, '0')}
+                </div>
+                <div className="text-[10px] text-[var(--smoke)] tracking-wider">DAYS</div>
+              </div>
+              <div className="text-xl md:text-2xl font-bold text-[var(--turf-green)]">:</div>
+              <div className="text-center">
+                <div className="text-2xl md:text-3xl font-bold text-[var(--chrome)] tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>
+                  {countdown.hours.toString().padStart(2, '0')}
+                </div>
+                <div className="text-[10px] text-[var(--smoke)] tracking-wider">HRS</div>
+              </div>
+              <div className="text-xl md:text-2xl font-bold text-[var(--turf-green)]">:</div>
+              <div className="text-center">
+                <div className="text-2xl md:text-3xl font-bold text-[var(--chrome)] tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>
+                  {countdown.minutes.toString().padStart(2, '0')}
+                </div>
+                <div className="text-[10px] text-[var(--smoke)] tracking-wider">MIN</div>
+              </div>
+              <div className="text-xl md:text-2xl font-bold text-[var(--turf-green)]">:</div>
+              <div className="text-center">
+                <div className="text-2xl md:text-3xl font-bold text-[var(--championship-gold)] tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>
+                  {countdown.seconds.toString().padStart(2, '0')}
+                </div>
+                <div className="text-[10px] text-[var(--smoke)] tracking-wider">SEC</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header section */}
       <div className="relative py-12 overflow-hidden">
         {/* Background effects */}
@@ -374,13 +491,32 @@ export default function PoolPage() {
                             <label className="block text-sm font-medium text-[var(--championship-gold)] mb-1">
                               Pool Password Required
                             </label>
-                            <input
-                              type="password"
-                              value={poolPassword}
-                              onChange={(e) => setPoolPassword(e.target.value)}
-                              placeholder="Enter pool password"
-                              className="w-full px-3 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] placeholder-[var(--smoke)] focus:outline-none focus:border-[var(--championship-gold)]/50"
-                            />
+                            <div className="relative">
+                              <input
+                                type={showPoolPassword ? 'text' : 'password'}
+                                value={poolPassword}
+                                onChange={(e) => setPoolPassword(e.target.value)}
+                                placeholder="Enter pool password"
+                                className="w-full px-3 py-2 pr-10 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] placeholder-[var(--smoke)] focus:outline-none focus:border-[var(--championship-gold)]/50"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPoolPassword(!showPoolPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--smoke)] hover:text-[var(--chrome)] transition-colors"
+                              >
+                                {showPoolPassword ? (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                    <line x1="1" y1="1" x2="23" y2="23" />
+                                  </svg>
+                                ) : (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -400,9 +536,15 @@ export default function PoolPage() {
                               {formatAmount(totalCost)} {paymentToken.symbol}
                             </p>
                             {remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0 && (
-                              <p className="text-sm text-[var(--smoke)]">
-                                You can buy {remainingSquares} more
-                              </p>
+                              remainingSquares === 0 ? (
+                                <p className="text-sm text-[var(--championship-gold)] font-medium">
+                                  You've reached the max ({maxSquares} squares)
+                                </p>
+                              ) : (
+                                <p className="text-sm text-[var(--smoke)]">
+                                  You can buy {remainingSquares} more (max {maxSquares})
+                                </p>
+                              )
                             )}
                             {!isNativePayment && needsApproval(totalCost) && selectedSquares.length > 0 && (
                               <p className="text-xs text-blue-400 mt-1">
@@ -566,12 +708,14 @@ export default function PoolPage() {
                   </dt>
                   <dd className="font-medium text-[var(--chrome)]">{formatDeadline(purchaseDeadline)}</dd>
                 </div>
-                <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
-                  <dt className="text-xs text-[var(--smoke)] mb-1" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
-                    REVEAL DEADLINE
-                  </dt>
-                  <dd className="font-medium text-[var(--chrome)]">{formatDeadline(revealDeadline)}</dd>
-                </div>
+                {purchaseDeadline !== revealDeadline && (
+                  <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
+                    <dt className="text-xs text-[var(--smoke)] mb-1" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
+                      NUMBERS REVEALED
+                    </dt>
+                    <dd className="font-medium text-[var(--chrome)]">{formatDeadline(revealDeadline)}</dd>
+                  </div>
+                )}
               </dl>
             </div>
 
@@ -671,6 +815,86 @@ export default function PoolPage() {
                 </div>
               </div>
             )}
+
+            {/* Share Pool */}
+            <div className="card p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-lg bg-[var(--electric-lime)]/20 border border-[var(--electric-lime)]/30 flex items-center justify-center">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--electric-lime)]">
+                    <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2" />
+                    <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
+                  SHARE POOL
+                </h2>
+              </div>
+
+              <p className="text-sm text-[var(--smoke)] mb-4">
+                Invite friends to join and fill more squares!
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    const url = typeof window !== 'undefined' ? window.location.href : '';
+                    await navigator.clipboard.writeText(url);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[var(--steel)]/30 border border-[var(--steel)]/50 hover:bg-[var(--steel)]/50 transition-colors text-sm"
+                >
+                  {linkCopied ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span className="text-[var(--turf-green)]">Link Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      <span>Copy Pool Link</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    const url = typeof window !== 'undefined' ? window.location.href : '';
+                    const text = `Join my Super Bowl Squares pool "${poolInfo?.name || 'Pool'}" 🏈🏆`;
+                    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+                    window.open(twitterUrl, '_blank', 'width=600,height=400');
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#1DA1F2]/20 border border-[#1DA1F2]/50 hover:bg-[#1DA1F2]/30 transition-colors text-sm text-[#1DA1F2]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  <span>Share on X</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const url = typeof window !== 'undefined' ? window.location.href : '';
+                    const text = `Join my Super Bowl Squares pool "${poolInfo?.name || 'Pool'}" 🏈🏆\n\n${url}`;
+                    const farcasterUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
+                    window.open(farcasterUrl, '_blank', 'width=600,height=700');
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#8465CB]/20 border border-[#8465CB]/50 hover:bg-[#8465CB]/30 transition-colors text-sm text-[#8465CB]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 1000 1000" fill="currentColor">
+                    <path d="M257.778 155.556H742.222V844.444H671.111V528.889H670.414C662.554 441.677 589.258 373.333 500 373.333C410.742 373.333 337.446 441.677 329.586 528.889H328.889V844.444H257.778V155.556Z" />
+                    <path d="M128.889 253.333L157.778 351.111H182.222V746.667C169.949 746.667 160 756.616 160 768.889V795.556H155.556C143.283 795.556 133.333 805.505 133.333 817.778V844.444H382.222V817.778C382.222 805.505 372.273 795.556 360 795.556H355.556V768.889C355.556 756.616 345.606 746.667 333.333 746.667H306.667V253.333H128.889Z" />
+                    <path d="M675.556 746.667C663.283 746.667 653.333 756.616 653.333 768.889V795.556H648.889C636.616 795.556 626.667 805.505 626.667 817.778V844.444H875.556V817.778C875.556 805.505 865.606 795.556 853.333 795.556H848.889V768.889C848.889 756.616 838.94 746.667 826.667 746.667V351.111H851.111L880 253.333H702.222V746.667H675.556Z" />
+                  </svg>
+                  <span>Share on Farcaster</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -705,7 +929,7 @@ export default function PoolPage() {
                   <h4 className="text-lg font-bold text-white mb-1" style={{ fontFamily: 'var(--font-display)' }}>
                     SQUARES PURCHASED!
                   </h4>
-                  <p className="text-sm text-[var(--smoke)]">
+                  <p className="text-sm text-gray-300">
                     Your squares have been added to the grid
                   </p>
                   {purchaseHash && (
@@ -713,7 +937,7 @@ export default function PoolPage() {
                       href={`https://sepolia.etherscan.io/tx/${purchaseHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-[var(--turf-green)] hover:underline mt-1 inline-block"
+                      className="text-xs text-white hover:underline mt-1 inline-block font-medium"
                     >
                       View on Etherscan →
                     </a>

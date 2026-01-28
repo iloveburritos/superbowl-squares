@@ -90,9 +90,13 @@ export function useCreatePool() {
   const {
     isLoading: isConfirming,
     isSuccess,
+    isError: isReceiptError,
+    error: receiptError,
     data: receipt,
+    refetch: refetchReceipt,
   } = useWaitForTransactionReceipt({
     hash,
+    confirmations: 1,
   });
 
   const createPool = async (params: PoolParams) => {
@@ -140,10 +144,12 @@ export function useCreatePool() {
     isPending,
     isConfirming,
     isSuccess,
-    error: writeError,
+    isReceiptError,
+    error: writeError || receiptError,
     hash,
     poolAddress,
     reset,
+    refetchReceipt,
     isFactoryConfigured,
   };
 }
