@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from 'wagmi';
 import { SquaresPoolABI } from '@/lib/contracts';
-import { zeroAddress, maxUint256 } from 'viem';
+import { zeroAddress } from 'viem';
 
 // Standard ERC20 ABI for approve and allowance
 const ERC20_ABI = [
@@ -91,9 +91,9 @@ export function useBuySquares(
     return allowance < amount;
   };
 
-  // Approve ERC20 spending
-  const approve = async (amount?: bigint) => {
-    if (!poolAddress || isNativePayment) return;
+  // Approve ERC20 spending (amount is required)
+  const approve = async (amount: bigint) => {
+    if (!poolAddress || isNativePayment || !amount) return;
 
     setStep('approving');
 
@@ -101,7 +101,7 @@ export function useBuySquares(
       address: paymentToken,
       abi: ERC20_ABI,
       functionName: 'approve',
-      args: [poolAddress, amount || maxUint256],
+      args: [poolAddress, amount],
     });
   };
 
@@ -113,13 +113,13 @@ export function useBuySquares(
 
     // Check if we need approval first
     if (!isNativePayment && needsApproval(totalValue)) {
-      // Need to approve first
+      // Need to approve first - only approve exact amount needed
       setStep('approving');
       writeApprove({
         address: paymentToken,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [poolAddress, maxUint256], // Approve max for convenience
+        args: [poolAddress, totalValue],
       });
       return;
     }

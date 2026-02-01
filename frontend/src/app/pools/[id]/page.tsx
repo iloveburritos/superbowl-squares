@@ -132,8 +132,10 @@ export default function PoolPage() {
   const [randomCount, setRandomCount] = useState('');
   const [showPoolPassword, setShowPoolPassword] = useState(false);
 
-  // Success toast state
+  // Success modal state
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+  const [purchasedCount, setPurchasedCount] = useState(0);
+  const [purchasedCost, setPurchasedCost] = useState<bigint>(BigInt(0));
 
   // Share state
   const [linkCopied, setLinkCopied] = useState(false);
@@ -221,23 +223,18 @@ export default function PoolPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Show success toast when purchase completes
+  // Show success modal when purchase completes
   useEffect(() => {
     if (purchaseSuccess) {
+      // purchasedCount and purchasedCost are already set in handleBuy before transaction
       setShowPurchaseSuccess(true);
       setSelectedSquares([]); // Clear selected squares after successful purchase
       // Refetch all relevant data
       refetchGrid();
       refetchInfo();
       refetchSquareCount();
-      // Auto-hide after 5 seconds
-      const timer = setTimeout(() => {
-        setShowPurchaseSuccess(false);
-        resetPurchase();
-      }, 5000);
-      return () => clearTimeout(timer);
     }
-  }, [purchaseSuccess, refetchGrid, refetchInfo, refetchSquareCount, resetPurchase]);
+  }, [purchaseSuccess, refetchGrid, refetchInfo, refetchSquareCount]);
 
   // After approval succeeds, continue with purchase
   // Only trigger when step is 'approving' to prevent stale state from auto-triggering
@@ -369,6 +366,10 @@ export default function PoolPage() {
   // Handle purchase
   const handleBuy = async () => {
     if (selectedSquares.length === 0 || !poolInfo) return;
+
+    // Save purchase info BEFORE transaction starts (for success modal)
+    setPurchasedCount(selectedSquares.length);
+    setPurchasedCost(poolInfo.squarePrice * BigInt(selectedSquares.length));
 
     // If we just completed approval and user clicks again, continue with buy
     if (isApproveSuccess && buyStep === 'approving') {
@@ -1670,6 +1671,21 @@ export default function PoolPage() {
         </div>
       )}
 
+      {/* Purchase Success Modal */}
+      {showPurchaseSuccess && (
+        <PurchaseSuccessModal
+          squareCount={purchasedCount}
+          totalCost={purchasedCost}
+          tokenSymbol={paymentToken.symbol}
+          poolName={poolInfo?.name || 'Super Bowl Squares'}
+          poolAddress={poolAddress}
+          onClose={() => {
+            setShowPurchaseSuccess(false);
+            resetPurchase();
+          }}
+        />
+      )}
+
       <style jsx>{`
         @keyframes slide-up {
           from {
@@ -1694,5 +1710,271 @@ export default function PoolPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+// Confetti component for celebrations
+function Confetti() {
+  const colors = ['#22c55e', '#fbbf24', '#c60c30', '#69be28', '#8b5cf6', '#ec4899', '#06b6d4', '#ffffff'];
+  const particles = Array.from({ length: 150 }, (_, i) => ({
+    id: i,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    left: `${Math.random() * 100}%`,
+    delay: `${Math.random() * 3}s`,
+    duration: `${3 + Math.random() * 2}s`,
+    size: `${6 + Math.random() * 8}px`,
+    rotation: `${Math.random() * 360}deg`,
+  }));
+
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="absolute animate-confetti"
+          style={{
+            left: p.left,
+            top: '-20px',
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.color,
+            animationDelay: p.delay,
+            animationDuration: p.duration,
+            transform: `rotate(${p.rotation})`,
+            borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+          }}
+        />
+      ))}
+      <style jsx global>{`
+        @keyframes confetti {
+          0% {
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+          }
+        }
+        .animate-confetti {
+          animation: confetti linear forwards;
+        }
+        @keyframes modal-bounce {
+          0% {
+            opacity: 0;
+            transform: scale(0.3) translateY(50px);
+          }
+          50% {
+            transform: scale(1.05) translateY(0);
+          }
+          70% {
+            transform: scale(0.95);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-modal-bounce {
+          animation: modal-bounce 0.5s ease-out forwards;
+        }
+        @keyframes pulse-glow {
+          0%, 100% {
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+          }
+          50% {
+            box-shadow: 0 0 40px rgba(34, 197, 94, 0.6);
+          }
+        }
+        .animate-pulse-glow {
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// Purchase Success Modal
+function PurchaseSuccessModal({
+  squareCount,
+  totalCost,
+  tokenSymbol,
+  poolName,
+  poolAddress,
+  onClose,
+}: {
+  squareCount: number;
+  totalCost: bigint;
+  tokenSymbol: string;
+  poolName: string;
+  poolAddress: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const poolUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/pools/${poolAddress}`
+    : '';
+
+  const formatCost = () => {
+    if (tokenSymbol === 'USDC' || tokenSymbol === 'USDT') {
+      return (Number(totalCost) / 1e6).toFixed(2);
+    }
+    return (Number(totalCost) / 1e18).toFixed(4);
+  };
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(poolUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const shareText = `Just grabbed ${squareCount} square${squareCount > 1 ? 's' : ''} in "${poolName}"! Who's ready for Super Bowl LX? 🏈🏆`;
+
+  const handleShareTwitter = () => {
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(poolUrl)}`;
+    window.open(twitterUrl, '_blank', 'width=600,height=400');
+  };
+
+  const handleShareFarcaster = () => {
+    const farcasterUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(shareText + '\n\n' + poolUrl)}`;
+    window.open(farcasterUrl, '_blank', 'width=600,height=700');
+  };
+
+  // Fun messages based on square count
+  const getMessage = () => {
+    if (squareCount >= 10) return "You're going ALL IN! 🔥";
+    if (squareCount >= 5) return "Nice moves, big player! 💪";
+    if (squareCount >= 3) return "Smart picks! 🎯";
+    return "You're in the game! 🎉";
+  };
+
+  return (
+    <>
+      <Confetti />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          onClick={onClose}
+        />
+
+        {/* Modal */}
+        <div className="relative w-full max-w-md animate-modal-bounce">
+          <div className="card p-8 text-center border-2 border-[var(--turf-green)]/50 animate-pulse-glow">
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-[var(--smoke)] hover:text-white transition-colors"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Football icon */}
+            <div className="mx-auto w-20 h-20 mb-6 relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-[var(--turf-green)] to-[var(--grass-dark)] rounded-full animate-pulse" />
+              <div className="absolute inset-2 bg-[var(--midnight)] rounded-full flex items-center justify-center">
+                <span className="text-4xl">🏈</span>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h2
+              className="text-3xl font-bold mb-2 bg-gradient-to-r from-[var(--turf-green)] via-[var(--electric-lime)] to-[var(--turf-green)] bg-clip-text text-transparent"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              YOU'RE IN!
+            </h2>
+
+            {/* Fun message */}
+            <p className="text-xl text-[var(--chrome)] mb-4">{getMessage()}</p>
+
+            {/* Square count display */}
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-[var(--turf-green)]/20 to-[var(--grass-dark)]/20 border border-[var(--turf-green)]/30 mb-6">
+              <div className="text-6xl font-bold text-[var(--turf-green)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+                {squareCount}
+              </div>
+              <div className="text-lg text-[var(--chrome)]">
+                Square{squareCount > 1 ? 's' : ''} Purchased
+              </div>
+              <div className="text-sm text-[var(--smoke)] mt-2">
+                {formatCost()} {tokenSymbol}
+              </div>
+            </div>
+
+            {/* Good luck message */}
+            <div className="p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30 mb-6">
+              <p className="text-[var(--championship-gold)] font-bold text-lg flex items-center justify-center gap-2">
+                <span>🍀</span> Good Luck! <span>🍀</span>
+              </p>
+              <p className="text-sm text-[var(--smoke)] mt-1">
+                May the numbers be ever in your favor
+              </p>
+            </div>
+
+            {/* Share section */}
+            <div className="pt-4 border-t border-[var(--steel)]/30">
+              <p className="text-sm text-[var(--smoke)] mb-3">Share with friends</p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--steel)]/30 border border-[var(--steel)]/50 hover:bg-[var(--steel)]/50 transition-colors text-sm"
+                >
+                  {copied ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span className="text-[var(--turf-green)]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      <span>Copy Link</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareTwitter}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1DA1F2]/20 border border-[#1DA1F2]/50 hover:bg-[#1DA1F2]/30 transition-colors text-sm text-[#1DA1F2]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  <span>X</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareFarcaster}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#8465CB]/20 border border-[#8465CB]/50 hover:bg-[#8465CB]/30 transition-colors text-sm text-[#8465CB]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 1000 1000" fill="currentColor">
+                    <path d="M257.778 155.556H742.222V844.444H671.111V528.889H670.414C662.554 441.677 589.258 373.333 500 373.333C410.742 373.333 337.446 441.677 329.586 528.889H328.889V844.444H257.778V155.556Z" />
+                    <path d="M128.889 253.333L157.778 351.111H182.222V746.667C169.949 746.667 160 756.616 160 768.889V795.556H155.556C143.283 795.556 133.333 805.505 133.333 817.778V844.444H382.222V817.778C382.222 805.505 372.273 795.556 360 795.556H355.556V768.889C355.556 756.616 345.606 746.667 333.333 746.667H306.667V253.333H128.889Z" />
+                    <path d="M675.556 746.667C663.283 746.667 653.333 756.616 653.333 768.889V795.556H648.889C636.616 795.556 626.667 805.505 626.667 817.778V844.444H875.556V817.778C875.556 805.505 865.606 795.556 853.333 795.556H848.889V768.889C848.889 756.616 838.94 746.667 826.667 746.667V351.111H851.111L880 253.333H702.222V746.667H675.556Z" />
+                  </svg>
+                  <span>Farcaster</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Continue button */}
+            <button
+              onClick={onClose}
+              className="mt-6 w-full btn-primary py-3 text-lg"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
