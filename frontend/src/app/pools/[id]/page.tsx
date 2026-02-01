@@ -309,25 +309,23 @@ export default function PoolPage() {
     const count = parseInt(randomCount);
     if (isNaN(count) || count <= 0) return;
 
-    // Get squares that are available and not already selected
-    const unselectedAvailable = availableSquares.filter(pos => !selectedSquares.includes(pos));
-
-    // Limit to what user can actually select
+    // Limit to what user can actually select (respecting max squares per user)
     const maxToSelect = remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0
-      ? Math.min(count, remainingSquares - selectedSquares.length, unselectedAvailable.length)
-      : Math.min(count, unselectedAvailable.length);
+      ? Math.min(count, remainingSquares, availableSquares.length)
+      : Math.min(count, availableSquares.length);
 
     if (maxToSelect <= 0) return;
 
     // Fisher-Yates shuffle and take first N
-    const shuffled = [...unselectedAvailable];
+    const shuffled = [...availableSquares];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
     const randomPicks = shuffled.slice(0, maxToSelect);
-    setSelectedSquares(prev => [...prev, ...randomPicks]);
+    // Replace selection entirely instead of adding to it
+    setSelectedSquares(randomPicks);
     setRandomCount('');
   };
 
