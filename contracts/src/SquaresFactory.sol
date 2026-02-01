@@ -24,6 +24,7 @@ contract SquaresFactory {
     event VRFSubscriptionCreated(uint256 indexed subscriptionId);
     event VRFConsumerAdded(uint256 indexed subscriptionId, address indexed consumer);
     event VRFSubscriptionFunded(uint256 indexed subscriptionId, uint256 amount);
+    event VRFSubscriptionCancelled(uint256 indexed subscriptionId, address indexed fundsRecipient);
     event ScoreSubmittedToAllPools(uint8 indexed quarter, uint8 teamAScore, uint8 teamBScore);
     event PoolCreationPaused(bool paused);
     event AaveAddressesUpdated(address pool, address gateway, address aWETH, address aUSDC);
@@ -116,6 +117,28 @@ contract SquaresFactory {
     /// @notice Update VRF funding amount per pool
     function setVRFFundingAmount(uint96 _amount) external onlyAdmin {
         vrfFundingAmount = _amount;
+    }
+
+    /// @notice Fund the VRF subscription with additional ETH
+    /// @dev Use this if the subscription balance is running low
+    function fundVRFSubscription() external payable onlyAdmin {
+        if (msg.value == 0) revert InsufficientCreationFee(0, 1);
+        IVRFCoordinatorV2Plus(vrfCoordinator).fundSubscriptionWithNative{value: msg.value}(
+            defaultVRFSubscriptionId
+        );
+        emit VRFSubscriptionFunded(defaultVRFSubscriptionId, msg.value);
+    }
+
+    /// @notice Cancel the VRF subscription and withdraw remaining funds
+    /// @dev After calling this, you'll need to create a new subscription to continue using VRF
+    /// @param to Address to receive the remaining subscription funds
+    function cancelAndWithdrawVRFSubscription(address to) external onlyAdmin {
+        if (to == address(0)) revert InvalidAddress();
+        uint256 subId = defaultVRFSubscriptionId;
+        IVRFCoordinatorV2Plus(vrfCoordinator).cancelSubscription(subId, to);
+        emit VRFSubscriptionCancelled(subId, to);
+        // Clear the subscription ID since it's no longer valid
+        defaultVRFSubscriptionId = 0;
     }
 
     /// @notice Withdraw accumulated fees

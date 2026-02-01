@@ -9,15 +9,15 @@ import {SquaresFactory} from "../src/SquaresFactory.sol";
 /// @dev Pool funds are deposited to Aave to earn yield, which goes to admin after game ends
 contract DeployBase is Script {
     // Admin address (has full control: pause creation, set fees, withdraw, etc.)
-    address constant ADMIN = 0x51E5E6F9933fD28B62d714C3f7febECe775b6b95;
+    address constant ADMIN = 0xc4364F3a17bb60F3A56aDbe738414eeEB523C6B2;
 
     // Base Chainlink VRF V2.5 configuration
     address constant VRF_COORDINATOR = 0xd5D517aBE5cF79B7e95eC98dB0f0277788aFF634;
-    bytes32 constant VRF_KEY_HASH = 0x00b81bab01011043e7c98e1a4e82f227b719fcbb9e61fa2db0892ed435ccbb7d;
+    bytes32 constant VRF_KEY_HASH = 0x00b81b5a830cb0a4009fbd8904de511e28631e62ce5ad231373d3cdad373ccab;
 
     // Base Aave V3 configuration
     address constant AAVE_POOL = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
-    address constant WETH_GATEWAY = 0x8be473dcfA93132559b118a2e512E32B9AB2EEE7;
+    address constant WETH_GATEWAY = 0xa0d9C1E9E48Ca30c8d8C3B5D69FF5dc1f6DFfC24;
     address constant A_WETH = 0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7;
     address constant A_USDC = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
 
@@ -33,8 +33,8 @@ contract DeployBase is Script {
             0 // No creation fee
         );
 
-        // Set VRF funding amount (0.01 ETH per pool - Base has lower gas costs)
-        factory.setVRFFundingAmount(0.01 ether);
+        // Set VRF funding amount (0.0005 ETH per pool - ~50x buffer at 0.02 gwei)
+        factory.setVRFFundingAmount(0.0005 ether);
 
         // Set Aave addresses for yield generation
         factory.setAaveAddresses(

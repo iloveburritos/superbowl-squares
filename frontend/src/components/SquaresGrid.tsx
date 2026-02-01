@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useEnsName } from 'wagmi';
+import { useAccount, useEnsName, useEnsAvatar } from 'wagmi';
 import { formatEther } from 'viem';
 import { mainnet } from 'wagmi/chains';
 import { PoolState } from '@/lib/contracts';
@@ -25,7 +25,7 @@ function AddressDisplay({ address, isMine }: { address: `0x${string}`; isMine: b
   return <>{`${address.slice(0, 6)}...${address.slice(-4)}`}</>;
 }
 
-// Square button with ENS-aware tooltip
+// Square button with ENS-aware tooltip and avatar
 function SquareButton({
   position,
   owner,
@@ -59,6 +59,14 @@ function SquareButton({
     },
   });
 
+  const { data: ensAvatar } = useEnsAvatar({
+    name: ensName || undefined,
+    chainId: mainnet.id,
+    query: {
+      enabled: !!ensName,
+    },
+  });
+
   const getTooltip = () => {
     if (!isOwned) {
       return `Square ${position} - ${formatAmount(squarePrice)} ${tokenSymbol}`;
@@ -79,9 +87,19 @@ function SquareButton({
       title={getTooltip()}
     >
       {isOwned && (
-        <span className="text-[8px] font-medium px-0.5 opacity-80 leading-tight text-center overflow-hidden max-h-full break-all line-clamp-3">
-          <AddressDisplay address={owner} isMine={isMine} />
-        </span>
+        <div className="flex flex-col items-center justify-center w-full h-full p-0.5 overflow-hidden">
+          {ensAvatar ? (
+            <img
+              src={ensAvatar}
+              alt={ensName || 'Avatar'}
+              className="w-full h-full object-cover rounded-sm"
+            />
+          ) : (
+            <span className="text-[8px] font-medium px-0.5 opacity-80 leading-tight text-center overflow-hidden max-h-full break-all line-clamp-3">
+              <AddressDisplay address={owner} isMine={isMine} />
+            </span>
+          )}
+        </div>
       )}
     </button>
   );

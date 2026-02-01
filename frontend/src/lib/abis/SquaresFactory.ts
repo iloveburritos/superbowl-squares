@@ -373,4 +373,26 @@ export const SquaresFactoryABI = [
     outputs: [{ type: 'bool' }],
     stateMutability: 'view',
   },
+  {
+    type: 'function',
+    name: 'fundVRFSubscription',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    name: 'cancelAndWithdrawVRFSubscription',
+    inputs: [{ name: 'to', type: 'address' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    name: 'VRFSubscriptionCancelled',
+    inputs: [
+      { name: 'subscriptionId', type: 'uint256', indexed: true },
+      { name: 'fundsRecipient', type: 'address', indexed: true },
+    ],
+  },
 ] as const;

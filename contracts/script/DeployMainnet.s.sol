@@ -9,7 +9,7 @@ import {SquaresFactory} from "../src/SquaresFactory.sol";
 /// @dev Pool funds are deposited to Aave to earn yield, which goes to admin after game ends
 contract DeployMainnet is Script {
     // Admin address (has full control: pause creation, set fees, withdraw, etc.)
-    address constant ADMIN = 0x51E5E6F9933fD28B62d714C3f7febECe775b6b95;
+    address constant ADMIN = 0xc4364F3a17bb60F3A56aDbe738414eeEB523C6B2;
 
     // Mainnet Chainlink VRF V2.5 configuration
     address constant VRF_COORDINATOR = 0xD7f86b4b8Cae7D942340FF628F82735b7a20893a;
@@ -33,8 +33,8 @@ contract DeployMainnet is Script {
             0 // No creation fee
         );
 
-        // Set VRF funding amount (1 ETH per pool)
-        factory.setVRFFundingAmount(1 ether);
+        // Set VRF funding amount (0.005 ETH per pool - ~50x buffer at 0.2 gwei)
+        factory.setVRFFundingAmount(0.005 ether);
 
         // Set Aave addresses for yield generation
         factory.setAaveAddresses(

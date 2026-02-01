@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useAllPools } from '@/hooks/useFactory';
-import { useAdminScoreSubmit, useAdminTriggerVRF, SCORE_ADMIN_ADDRESS } from '@/hooks/useAdminScoreSubmit';
+import { useAdminScoreSubmit, useAdminTriggerVRF, SCORE_ADMIN_ADDRESS, useVRFSubscriptionId, useFundVRFSubscription, useCancelVRFSubscription } from '@/hooks/useAdminScoreSubmit';
 import { usePoolCreationPaused, useSetPoolCreationPaused } from '@/hooks/useAdminPoolPause';
 import { usePoolYieldInfo, useWithdrawYield, usePoolState } from '@/hooks/useAdminYield';
-import { useReadContract } from 'wagmi';
+import { useReadContract, useChainId } from 'wagmi';
 import { SquaresPoolABI } from '@/lib/abis/SquaresPool';
-import { formatEther } from 'viem';
+import { formatEther, zeroAddress } from 'viem';
+import { findToken, formatTokenAmount, ETH_TOKEN } from '@/config/tokens';
 
 const QUARTER_NAMES = ['Q1', 'Halftime', 'Q3', 'Final'];
 
@@ -102,13 +103,71 @@ export default function AdminPage() {
     reset: resetPause,
   } = useSetPoolCreationPaused();
 
-  // Refresh pools on score success
+  // Read scores from the first pool to determine which quarters are already submitted
+  const firstPoolAddress = pools?.[0];
+  const { data: q1Score, refetch: refetchQ1 } = useReadContract({
+    address: firstPoolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'getScore',
+    args: [0],
+    query: { enabled: !!firstPoolAddress },
+  });
+  const { data: q2Score, refetch: refetchQ2 } = useReadContract({
+    address: firstPoolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'getScore',
+    args: [1],
+    query: { enabled: !!firstPoolAddress },
+  });
+  const { data: q3Score, refetch: refetchQ3 } = useReadContract({
+    address: firstPoolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'getScore',
+    args: [2],
+    query: { enabled: !!firstPoolAddress },
+  });
+  const { data: finalScore, refetch: refetchFinal } = useReadContract({
+    address: firstPoolAddress,
+    abi: SquaresPoolABI,
+    functionName: 'getScore',
+    args: [3],
+    query: { enabled: !!firstPoolAddress },
+  });
+
+  // Check which quarters have been submitted
+  const quarterSubmitted = [
+    (q1Score as { submitted?: boolean } | undefined)?.submitted ?? false,
+    (q2Score as { submitted?: boolean } | undefined)?.submitted ?? false,
+    (q3Score as { submitted?: boolean } | undefined)?.submitted ?? false,
+    (finalScore as { submitted?: boolean } | undefined)?.submitted ?? false,
+  ];
+
+  // Find the next unsubmitted quarter and auto-select it
+  const nextUnsubmittedQuarter = quarterSubmitted.findIndex(submitted => !submitted);
+
+  // Auto-select the first unsubmitted quarter on load
+  useEffect(() => {
+    if (nextUnsubmittedQuarter !== -1 && quarterSubmitted[selectedQuarter]) {
+      setSelectedQuarter(nextUnsubmittedQuarter);
+    }
+  }, [nextUnsubmittedQuarter, quarterSubmitted, selectedQuarter]);
+
+  // Refresh scores on score success
   if (isSuccess) {
     setTimeout(() => {
       refetch();
+      refetchQ1();
+      refetchQ2();
+      refetchQ3();
+      refetchFinal();
       reset();
       setTeamAScore('');
       setTeamBScore('');
+      // Auto-select next unsubmitted quarter
+      const nextQuarter = quarterSubmitted.findIndex((submitted, i) => i > selectedQuarter && !submitted);
+      if (nextQuarter !== -1) {
+        setSelectedQuarter(nextQuarter);
+      }
     }, 2000);
   }
 
@@ -166,6 +225,11 @@ export default function AdminPage() {
   }
 
   const handleSubmitScore = () => {
+    if (quarterSubmitted[selectedQuarter]) {
+      alert('This quarter has already been scored');
+      return;
+    }
+
     const teamA = parseInt(teamAScore);
     const teamB = parseInt(teamBScore);
 
@@ -308,19 +372,34 @@ export default function AdminPage() {
               Select Quarter
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {QUARTER_NAMES.map((name, index) => (
-                <button
-                  key={index}
-                  onClick={() => setSelectedQuarter(index)}
-                  className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
-                    selectedQuarter === index
-                      ? 'bg-[var(--turf-green)] text-[var(--midnight)] shadow-[0_0_20px_rgba(34,197,94,0.3)]'
-                      : 'bg-[var(--steel)]/20 text-[var(--smoke)] hover:bg-[var(--steel)]/40 border border-[var(--steel)]/30'
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
+              {QUARTER_NAMES.map((name, index) => {
+                const isSubmitted = quarterSubmitted[index];
+                const isSelected = selectedQuarter === index;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => !isSubmitted && setSelectedQuarter(index)}
+                    disabled={isSubmitted}
+                    className={`py-3 px-4 rounded-xl font-bold text-sm transition-all relative ${
+                      isSubmitted
+                        ? 'bg-[var(--steel)]/10 text-[var(--smoke)]/40 cursor-not-allowed border border-[var(--steel)]/20'
+                        : isSelected
+                        ? 'bg-[var(--turf-green)] text-[var(--midnight)] shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                        : 'bg-[var(--steel)]/20 text-[var(--smoke)] hover:bg-[var(--steel)]/40 border border-[var(--steel)]/30'
+                    }`}
+                  >
+                    {name}
+                    {isSubmitted && (
+                      <span className="absolute top-1 right-1">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                          <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -397,9 +476,9 @@ export default function AdminPage() {
               </div>
               <button
                 onClick={handleSubmitScore}
-                disabled={isPending || isConfirming || !teamAScore || !teamBScore}
+                disabled={isPending || isConfirming || !teamAScore || !teamBScore || quarterSubmitted[selectedQuarter]}
                 className={`px-8 py-3 rounded-xl font-bold text-sm transition-all ${
-                  isPending || isConfirming || !teamAScore || !teamBScore
+                  isPending || isConfirming || !teamAScore || !teamBScore || quarterSubmitted[selectedQuarter]
                     ? 'bg-[var(--steel)]/30 text-[var(--smoke)] cursor-not-allowed'
                     : 'bg-gradient-to-r from-[var(--turf-green)] to-[var(--grass-dark)] text-[var(--midnight)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
                 }`}
@@ -486,12 +565,16 @@ export default function AdminPage() {
             <div className="text-center py-8 text-[var(--smoke)]">No pools found</div>
           )}
         </div>
+
+        {/* VRF Subscription Management */}
+        <VRFSubscriptionSection />
       </div>
     </div>
   );
 }
 
 function PoolRow({ address }: { address: `0x${string}` }) {
+  const chainId = useChainId();
   const { data: poolInfo, isLoading } = useReadContract({
     address,
     abi: SquaresPoolABI,
@@ -510,8 +593,12 @@ function PoolRow({ address }: { address: `0x${string}` }) {
     return null;
   }
 
-  const [name, state, , , totalPot, squaresSold] = poolInfo as [string, number, bigint, string, bigint, bigint, string, string];
+  const [name, state, , paymentToken, totalPot, squaresSold] = poolInfo as [string, number, bigint, `0x${string}`, bigint, bigint, string, string];
   const nextQuarter = getNextQuarter(state);
+
+  // Get token info for correct formatting
+  const token = findToken(chainId, paymentToken) || ETH_TOKEN;
+  const formattedPot = formatTokenAmount(totalPot, token.decimals, 6);
 
   return (
     <div className="p-4 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/30 hover:border-[var(--steel)]/50 transition-colors">
@@ -536,7 +623,7 @@ function PoolRow({ address }: { address: `0x${string}` }) {
             )}
           </div>
           <div className="text-sm text-[var(--smoke)]">
-            {squaresSold.toString()}/100 squares | {formatEther(totalPot)} ETH
+            {squaresSold.toString()}/100 squares | {formattedPot} {token.symbol}
           </div>
         </div>
       </div>
@@ -585,6 +672,7 @@ function YieldWithdrawalSection({ pools, onRefresh }: { pools: `0x${string}`[]; 
 }
 
 function PoolYieldRow({ poolAddress, onRefresh, onAaveDetected }: { poolAddress: `0x${string}`; onRefresh: () => void; onAaveDetected?: () => void }) {
+  const chainId = useChainId();
   const { yieldInfo, isLoading: isLoadingYield, refetch: refetchYield } = usePoolYieldInfo(poolAddress);
   const { state, isFinished } = usePoolState(poolAddress);
   const { withdrawYield, isPending, isConfirming, isSuccess, error, reset } = useWithdrawYield(poolAddress);
@@ -624,7 +712,14 @@ function PoolYieldRow({ poolAddress, onRefresh, onAaveDetected }: { poolAddress:
     return null; // Skip pools without Aave
   }
 
-  const poolName = poolInfo ? (poolInfo as [string, number, bigint, string, bigint, bigint, string, string])[0] : 'Pool';
+  const poolName = poolInfo ? (poolInfo as [string, number, bigint, `0x${string}`, bigint, bigint, string, string])[0] : 'Pool';
+  const paymentToken = poolInfo ? (poolInfo as [string, number, bigint, `0x${string}`, bigint, bigint, string, string])[3] : zeroAddress;
+
+  // Get token info for correct formatting
+  const token = findToken(chainId, paymentToken) || ETH_TOKEN;
+  const formattedPrincipal = formatTokenAmount(yieldInfo.principal, token.decimals, 6);
+  const formattedYield = formatTokenAmount(yieldInfo.yield, token.decimals, 18);
+
   const hasYield = yieldInfo.yield > BigInt(0);
   const canWithdraw = isFinished && hasYield;
 
@@ -642,14 +737,14 @@ function PoolYieldRow({ poolAddress, onRefresh, onAaveDetected }: { poolAddress:
           <div className="text-right">
             <div className="text-sm text-[var(--smoke)]">Principal</div>
             <div className="font-medium text-[var(--chrome)]">
-              {formatEther(yieldInfo.principal)} ETH
+              {formattedPrincipal} {token.symbol}
             </div>
           </div>
 
           <div className="text-right">
             <div className="text-sm text-[var(--smoke)]">Yield</div>
             <div className={`font-bold ${hasYield ? 'text-[var(--turf-green)]' : 'text-[var(--smoke)]'}`}>
-              {formatEther(yieldInfo.yield)} ETH
+              {formattedYield} {token.symbol}
             </div>
           </div>
 
@@ -881,6 +976,217 @@ function CurrentScoresDisplay({ poolAddress, onRefresh }: { poolAddress: `0x${st
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function VRFSubscriptionSection() {
+  const { address } = useAccount();
+  const [fundAmount, setFundAmount] = useState<string>('0.01');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const { subscriptionId, isLoading: isLoadingSubId, refetch: refetchSubId } = useVRFSubscriptionId();
+  const {
+    fundVRF,
+    isPending: isFundPending,
+    isConfirming: isFundConfirming,
+    isSuccess: isFundSuccess,
+    error: fundError,
+    reset: resetFund,
+  } = useFundVRFSubscription();
+  const {
+    cancelAndWithdraw,
+    isPending: isCancelPending,
+    isConfirming: isCancelConfirming,
+    isSuccess: isCancelSuccess,
+    error: cancelError,
+    reset: resetCancel,
+  } = useCancelVRFSubscription();
+
+  // Refresh subscription ID on success
+  if (isFundSuccess) {
+    setTimeout(() => {
+      refetchSubId();
+      resetFund();
+      setFundAmount('0.01');
+    }, 2000);
+  }
+
+  if (isCancelSuccess) {
+    setTimeout(() => {
+      refetchSubId();
+      resetCancel();
+      setShowCancelConfirm(false);
+    }, 2000);
+  }
+
+  const handleFund = () => {
+    const amountEth = parseFloat(fundAmount);
+    if (isNaN(amountEth) || amountEth <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    const amountWei = BigInt(Math.floor(amountEth * 1e18));
+    fundVRF(amountWei);
+  };
+
+  const handleCancel = () => {
+    if (!address) {
+      alert('Wallet not connected');
+      return;
+    }
+    cancelAndWithdraw(address);
+  };
+
+  const hasSubscription = subscriptionId && subscriptionId > BigInt(0);
+
+  return (
+    <div className="card p-6 mb-8">
+      <h2 className="text-xl font-bold text-[var(--chrome)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
+        VRF Subscription Management
+      </h2>
+      <p className="text-[var(--smoke)] mb-4 text-sm">
+        Manage the Chainlink VRF subscription. Top up when balance is low, or cancel and withdraw remaining funds.
+      </p>
+
+      {/* Subscription Status */}
+      <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/30 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              hasSubscription
+                ? 'bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30'
+                : 'bg-red-500/20 border border-red-500/30'
+            }`}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className={hasSubscription ? 'text-[var(--turf-green)]' : 'text-red-400'}>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-[var(--smoke)]">Subscription ID</p>
+              <p className={`font-bold ${hasSubscription ? 'text-[var(--chrome)]' : 'text-red-400'}`}>
+                {isLoadingSubId ? 'Loading...' : hasSubscription ? subscriptionId.toString() : 'No Active Subscription'}
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://vrf.chain.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-[var(--turf-green)] hover:underline flex items-center gap-1"
+          >
+            View on Chainlink
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      {hasSubscription && (
+        <>
+          {/* Fund Subscription */}
+          <div className="p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/30 mb-4">
+            <h3 className="font-bold text-[var(--chrome)] mb-3 flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Top Up Subscription
+            </h3>
+            <p className="text-sm text-[var(--smoke)] mb-3">
+              Add ETH to the VRF subscription to ensure random number generation continues working.
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0.001"
+                    value={fundAmount}
+                    onChange={(e) => setFundAmount(e.target.value)}
+                    placeholder="0.01"
+                    className="w-full px-4 py-3 rounded-lg bg-[var(--midnight)]/50 border border-[var(--steel)]/30 text-[var(--chrome)] focus:outline-none focus:border-[var(--turf-green)] pr-16"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--smoke)]">ETH</span>
+                </div>
+              </div>
+              <button
+                onClick={handleFund}
+                disabled={isFundPending || isFundConfirming}
+                className="px-6 py-3 rounded-lg font-bold text-sm bg-[var(--turf-green)] text-[var(--midnight)] hover:shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isFundPending ? 'Confirm...' : isFundConfirming ? 'Sending...' : 'Fund'}
+              </button>
+            </div>
+            {isFundSuccess && (
+              <div className="mt-3 p-2 rounded bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30">
+                <span className="text-sm text-[var(--turf-green)]">VRF subscription funded successfully!</span>
+              </div>
+            )}
+            {fundError && (
+              <div className="mt-3 p-2 rounded bg-red-500/20 border border-red-500/30">
+                <span className="text-sm text-red-400">Error: {fundError.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Cancel Subscription */}
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+            <h3 className="font-bold text-[var(--chrome)] mb-3 flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-400">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Cancel & Withdraw
+            </h3>
+            <p className="text-sm text-[var(--smoke)] mb-3">
+              Cancel the VRF subscription and withdraw remaining ETH to your wallet. This will disable random number generation until a new subscription is created.
+            </p>
+
+            {!showCancelConfirm ? (
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="px-6 py-3 rounded-lg font-bold text-sm bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all"
+              >
+                Cancel Subscription
+              </button>
+            ) : (
+              <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/50">
+                <p className="text-sm text-red-400 mb-3 font-medium">
+                  Are you sure? This will cancel the subscription and send remaining funds to your wallet.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCancel}
+                    disabled={isCancelPending || isCancelConfirming}
+                    className="px-4 py-2 rounded-lg font-bold text-sm bg-red-500 text-white hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCancelPending ? 'Confirm...' : isCancelConfirming ? 'Cancelling...' : 'Yes, Cancel'}
+                  </button>
+                  <button
+                    onClick={() => setShowCancelConfirm(false)}
+                    className="px-4 py-2 rounded-lg font-bold text-sm bg-[var(--steel)]/30 text-[var(--smoke)] hover:bg-[var(--steel)]/50 transition-all"
+                  >
+                    No, Keep It
+                  </button>
+                </div>
+              </div>
+            )}
+            {isCancelSuccess && (
+              <div className="mt-3 p-2 rounded bg-[var(--turf-green)]/20 border border-[var(--turf-green)]/30">
+                <span className="text-sm text-[var(--turf-green)]">Subscription cancelled and funds withdrawn!</span>
+              </div>
+            )}
+            {cancelError && (
+              <div className="mt-3 p-2 rounded bg-red-500/20 border border-red-500/30">
+                <span className="text-sm text-red-400">Error: {cancelError.message}</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

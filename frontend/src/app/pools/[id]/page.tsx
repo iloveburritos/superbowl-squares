@@ -9,6 +9,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { SquaresGrid } from '@/components/SquaresGrid';
 import { ScoreDisplay } from '@/components/ScoreDisplay';
 import { PayoutBreakdown } from '@/components/PayoutBreakdown';
+import { AddressDisplay } from '@/components/AddressDisplay';
 import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 import {
@@ -1080,9 +1081,11 @@ export default function PoolPage() {
                             {hasWinner ? (
                               <span className="text-sm">
                                 <span className="text-[var(--smoke)]">Paid to </span>
-                                <span className={isYou ? 'text-[var(--turf-green)] font-medium' : 'text-[var(--championship-gold)] font-medium'}>
-                                  {isYou ? 'You' : `${winner?.slice(0, 6)}...${winner?.slice(-4)}`}
-                                </span>
+                                <AddressDisplay
+                                  address={winner as `0x${string}`}
+                                  isMine={isYou}
+                                  className={isYou ? 'text-[var(--turf-green)] font-medium' : 'text-[var(--championship-gold)] font-medium'}
+                                />
                               </span>
                             ) : (
                               <span className="text-sm text-[var(--smoke)]">No winner (rolled forward)</span>
@@ -1383,15 +1386,15 @@ export default function PoolPage() {
                   <ul className="text-sm text-[var(--smoke)] space-y-2">
                     <li className="flex items-start gap-2">
                       <span className="text-blue-400 font-bold">•</span>
-                      <span><span className="text-blue-400 font-medium">Chainlink Automation</span> triggers number assignment at the scheduled time</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-400 font-bold">•</span>
                       <span><span className="text-blue-400 font-medium">Chainlink VRF</span> provides verifiable randomness for fair number assignment</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-blue-400 font-bold">•</span>
-                      <span><span className="text-blue-400 font-medium">Chainlink Functions</span> fetches real game scores from sports APIs</span>
+                      <span><span className="text-blue-400 font-medium">Smart contracts</span> automatically distribute winnings based on scores</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-400 font-bold">•</span>
+                      <span><span className="text-blue-400 font-medium">Aave V3</span> generates yield on pool funds until payouts</span>
                     </li>
                   </ul>
                 </div>

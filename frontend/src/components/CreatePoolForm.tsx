@@ -424,10 +424,16 @@ export function CreatePoolForm() {
                             <circle cx="55.5" cy="55.5" r="55.5" fill="#0052FF"/>
                             <path d="M55.5 95c21.815 0 39.5-17.685 39.5-39.5S77.315 16 55.5 16C34.408 16 17.174 32.507 16.03 53h52.92v5H16.03C17.174 78.493 34.408 95 55.5 95z" fill="white"/>
                           </svg>
+                        ) : chain.name === 'Arbitrum' ? (
+                          <svg width="16" height="16" viewBox="0 0 40 40" fill="none">
+                            <rect width="40" height="40" rx="8" fill="#2D374B"/>
+                            <path d="M20.3716 10.6001L27.7289 27.3787L24.8918 27.379L23.3795 23.7452H16.6178L18.7001 19.1064L21.2174 25.1001H21.2275L23.4047 20.0081L19.8199 11.1613C19.6261 10.702 19.1772 10.4001 18.6799 10.4001H17.8001C17.3028 10.4001 16.8539 10.702 16.6601 11.1613L10.2001 26.4001H13.3387L14.8564 22.8H18.7001L16.6178 27.4388H16.6205L13.3868 27.4401L20.3716 10.6001Z" fill="#28A0F0"/>
+                            <path d="M27.7716 27.4001L27.729 27.3787L24.892 27.379H24.8918L24.8919 27.3789L24.8916 27.3793L24.8918 27.379L27.7287 27.3787L27.7289 27.3787L27.7716 27.4001Z" fill="#28A0F0"/>
+                            <path d="M20 7L15 10.4H25L20 7Z" fill="#96BEDC"/>
+                          </svg>
                         ) : (
-                          <svg width="16" height="16" viewBox="0 0 256 256" fill="none">
-                            <circle cx="128" cy="128" r="128" fill="#213147"/>
-                            <path d="M226.1 135.5l-27.4-80.7c-1.8-5.2-6.6-8.7-12.1-8.7H69.3c-5.5 0-10.3 3.5-12.1 8.7l-27.4 80.7c-1.5 4.5-.2 9.5 3.4 12.6l88.1 72.5c4.1 3.4 10.1 3.4 14.3 0l88.1-72.5c3.6-3.1 4.9-8.1 3.4-12.6z" fill="#12AAFF"/>
+                          <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
+                            <circle cx="16" cy="16" r="16" fill="#627EEA"/>
                           </svg>
                         )}
                       </div>
@@ -956,7 +962,7 @@ export function CreatePoolForm() {
                   <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
                   <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-                Via Chainlink Automation
+                Via Chainlink VRF
               </span>
             </div>
           </div>

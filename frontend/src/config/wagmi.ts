@@ -11,7 +11,7 @@ import {
   safeWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import { createConfig, http } from 'wagmi';
-import { mainnet, sepolia, base, baseSepolia, arbitrum, arbitrumSepolia } from 'wagmi/chains';
+import { mainnet, sepolia, base, arbitrum } from 'wagmi/chains';
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 const hasValidProjectId = projectId && projectId !== 'your_project_id_here';
@@ -63,14 +63,12 @@ const connectors = connectorsForWallets(
 
 export const config = createConfig({
   connectors,
-  chains: [mainnet, base, arbitrum, sepolia, baseSepolia, arbitrumSepolia],
+  chains: [mainnet, base, arbitrum, sepolia],
   transports: {
     [mainnet.id]: http(),
     [base.id]: http(),
     [arbitrum.id]: http(),
     [sepolia.id]: http(),
-    [baseSepolia.id]: http(),
-    [arbitrumSepolia.id]: http(),
   },
   ssr: true,
 });
@@ -80,15 +78,11 @@ export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
   // Mainnet
   1: '0x0000000000000000000000000000000000000000',
   // Base
-  8453: '0x0000000000000000000000000000000000000000',
+  8453: '0x4e670Ce734c08e352b2C7aD8678fCDa63047D248',
   // Arbitrum
   42161: '0x0000000000000000000000000000000000000000',
   // Sepolia (no Aave integration)
   11155111: '0x27b0879ceaD424B20c358d6F2dC097fCd57BdBdE',
-  // Base Sepolia
-  84532: '0x0000000000000000000000000000000000000000',
-  // Arbitrum Sepolia
-  421614: '0x0000000000000000000000000000000000000000',
 };
 
 export const SUPPORTED_CHAINS = [
@@ -96,6 +90,4 @@ export const SUPPORTED_CHAINS = [
   { id: 8453, name: 'Base', icon: '/chains/base.svg' },
   { id: 42161, name: 'Arbitrum', icon: '/chains/arbitrum.svg' },
   { id: 11155111, name: 'Sepolia', icon: '/chains/ethereum.svg', testnet: true },
-  { id: 84532, name: 'Base Sepolia', icon: '/chains/base.svg', testnet: true },
-  { id: 421614, name: 'Arbitrum Sepolia', icon: '/chains/arbitrum.svg', testnet: true },
 ];

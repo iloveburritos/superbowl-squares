@@ -157,5 +157,19 @@ contract MockVRFCoordinatorV2Plus is IVRFCoordinatorV2Plus {
         subscriptionNativeBalances[subId] += uint96(msg.value);
     }
 
+    /// @notice Cancel a subscription and send remaining funds to a recipient
+    function cancelSubscription(uint256 subId, address to) external override {
+        require(subscriptionOwners[subId] == msg.sender, "Not subscription owner");
+        uint96 nativeBalance = subscriptionNativeBalances[subId];
+        subscriptionNativeBalances[subId] = 0;
+        subscriptionBalances[subId] = 0;
+        delete subscriptionConsumers[subId];
+        delete subscriptionOwners[subId];
+        if (nativeBalance > 0) {
+            (bool success,) = to.call{value: nativeBalance}("");
+            require(success, "Transfer failed");
+        }
+    }
+
     receive() external payable {}
 }

@@ -620,8 +620,32 @@ contract SquaresPoolTest is Test {
 
     function test_TriggerVRFForAllPools_MultiplePoolsMixedStates() public {
         // Create 3 additional pools (total 4 pools)
-        ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
-            name: "Pool",
+        ISquaresPool.PoolParams memory params2 = ISquaresPool.PoolParams({
+            name: "Pool 2",
+            squarePrice: SQUARE_PRICE,
+            paymentToken: address(0),
+            maxSquaresPerUser: 10,
+            payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
+            purchaseDeadline: block.timestamp + 7 days,
+            vrfTriggerTime: block.timestamp + 8 days,
+            passwordHash: bytes32(0)
+        });
+        ISquaresPool.PoolParams memory params3 = ISquaresPool.PoolParams({
+            name: "Pool 3",
+            squarePrice: SQUARE_PRICE,
+            paymentToken: address(0),
+            maxSquaresPerUser: 10,
+            payoutPercentages: [uint8(20), uint8(20), uint8(20), uint8(40)],
+            teamAName: "Patriots",
+            teamBName: "Seahawks",
+            purchaseDeadline: block.timestamp + 7 days,
+            vrfTriggerTime: block.timestamp + 8 days,
+            passwordHash: bytes32(0)
+        });
+        ISquaresPool.PoolParams memory params4 = ISquaresPool.PoolParams({
+            name: "Pool 4",
             squarePrice: SQUARE_PRICE,
             paymentToken: address(0),
             maxSquaresPerUser: 10,
@@ -634,11 +658,11 @@ contract SquaresPoolTest is Test {
         });
 
         vm.prank(operator);
-        address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(params);
+        address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(params2);
         vm.prank(operator);
-        address pool3Addr = factory.createPool{value: TOTAL_REQUIRED}(params);
+        address pool3Addr = factory.createPool{value: TOTAL_REQUIRED}(params3);
         vm.prank(operator);
-        address pool4Addr = factory.createPool{value: TOTAL_REQUIRED}(params);
+        address pool4Addr = factory.createPool{value: TOTAL_REQUIRED}(params4);
 
         SquaresPool pool2 = SquaresPool(payable(pool2Addr));
         SquaresPool pool3 = SquaresPool(payable(pool3Addr));
@@ -1305,9 +1329,10 @@ contract SquaresPoolTest is Test {
         pool = SquaresPool(payable(poolAddr));
 
         // Create 10 buyers, each buys 1 square
+        // Use addresses starting from 1000 to avoid precompile addresses on L2s
         address[] memory buyers = new address[](10);
         for (uint256 i = 0; i < 10; i++) {
-            buyers[i] = address(uint160(100 + i));
+            buyers[i] = address(uint160(1000 + i));
             vm.deal(buyers[i], 10 ether);
         }
 
@@ -1852,6 +1877,8 @@ contract SquaresPoolAaveTest is Test {
     uint256 public constant CREATION_FEE = 0.1 ether;
     uint256 public constant TOTAL_REQUIRED = CREATION_FEE + VRF_FUNDING_AMOUNT;
 
+    uint256 private aavePoolCounter;
+
     function setUp() public {
         // Deploy mocks
         vrfCoordinator = new MockVRFCoordinatorV2Plus();
@@ -1895,8 +1922,9 @@ contract SquaresPoolAaveTest is Test {
     }
 
     function _createPoolWithAave() internal returns (SquaresPool) {
+        aavePoolCounter++;
         ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
-            name: "Aave Pool",
+            name: string(abi.encodePacked("Aave Pool ", vm.toString(aavePoolCounter))),
             squarePrice: SQUARE_PRICE,
             paymentToken: address(0), // ETH
             maxSquaresPerUser: 0, // Unlimited

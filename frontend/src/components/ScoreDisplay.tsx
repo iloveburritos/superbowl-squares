@@ -3,6 +3,7 @@
 import { Quarter, QUARTER_LABELS, type Score } from '@/lib/contracts';
 import { formatEther } from 'viem';
 import { Token, formatTokenAmount, isNativeToken } from '@/config/tokens';
+import { AddressDisplay } from './AddressDisplay';
 
 interface ScoreDisplayProps {
   teamAName: string;
@@ -32,10 +33,6 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners, token, cur
       return formatEther(amount);
     }
     return formatTokenAmount(amount, token.decimals);
-  };
-
-  const truncateAddress = (addr: string) => {
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
   const isCurrentUser = (addr: string) => {
@@ -151,7 +148,10 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners, token, cur
                     {winner?.address && winner.address !== '0x0000000000000000000000000000000000000000' ? (
                       <div>
                         <p className={`text-sm font-medium ${isCurrentUser(winner.address) ? 'text-[var(--turf-green)]' : 'text-[var(--championship-gold)]'}`}>
-                          {isCurrentUser(winner.address) ? 'You' : truncateAddress(winner.address)}
+                          <AddressDisplay
+                            address={winner.address}
+                            isMine={isCurrentUser(winner.address)}
+                          />
                         </p>
                         <p className="text-xs text-[var(--smoke)]">
                           Won {formatAmount(winner.payout)} {tokenSymbol}

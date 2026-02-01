@@ -75,6 +75,11 @@ interface IVRFCoordinatorV2Plus {
     /// @notice Fund a subscription with native tokens (ETH)
     /// @param subId The subscription ID to fund
     function fundSubscriptionWithNative(uint256 subId) external payable;
+
+    /// @notice Cancel a subscription and send remaining funds to a recipient
+    /// @param subId The subscription ID to cancel
+    /// @param to The address to send remaining funds to
+    function cancelSubscription(uint256 subId, address to) external;
 }
 
 /// @title VRFConsumerBaseV2Plus

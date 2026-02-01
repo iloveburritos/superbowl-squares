@@ -5,7 +5,7 @@ import { SquaresFactoryABI } from '@/lib/abis/SquaresFactory';
 import { useFactoryAddress } from './useFactory';
 
 // Score admin address
-export const SCORE_ADMIN_ADDRESS = '0x51E5E6F9933fD28B62d714C3f7febECe775b6b95' as const;
+export const SCORE_ADMIN_ADDRESS = '0xc4364F3a17bb60F3A56aDbe738414eeEB523C6B2' as const;
 
 export function useScoreAdmin() {
   const factoryAddress = useFactoryAddress();
@@ -121,6 +121,120 @@ export function useAdminTriggerVRF() {
 
   return {
     triggerVRF,
+    isPending,
+    isConfirming,
+    isSuccess,
+    isReceiptError,
+    error: writeError || receiptError,
+    hash,
+    reset,
+  };
+}
+
+export function useVRFSubscriptionId() {
+  const factoryAddress = useFactoryAddress();
+
+  const { data: subscriptionId, isLoading, error, refetch } = useReadContract({
+    address: factoryAddress,
+    abi: SquaresFactoryABI,
+    functionName: 'defaultVRFSubscriptionId',
+    query: {
+      enabled: !!factoryAddress,
+    },
+  });
+
+  return {
+    subscriptionId: subscriptionId as bigint | undefined,
+    isLoading,
+    error,
+    refetch,
+  };
+}
+
+export function useFundVRFSubscription() {
+  const factoryAddress = useFactoryAddress();
+
+  const {
+    writeContract,
+    data: hash,
+    isPending,
+    error: writeError,
+    reset,
+  } = useWriteContract();
+
+  const {
+    isLoading: isConfirming,
+    isSuccess,
+    isError: isReceiptError,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({
+    hash,
+    confirmations: 1,
+  });
+
+  const fundVRF = (amountInWei: bigint) => {
+    if (!factoryAddress) {
+      console.error('Factory address not configured');
+      return;
+    }
+
+    writeContract({
+      address: factoryAddress,
+      abi: SquaresFactoryABI,
+      functionName: 'fundVRFSubscription',
+      value: amountInWei,
+    });
+  };
+
+  return {
+    fundVRF,
+    isPending,
+    isConfirming,
+    isSuccess,
+    isReceiptError,
+    error: writeError || receiptError,
+    hash,
+    reset,
+  };
+}
+
+export function useCancelVRFSubscription() {
+  const factoryAddress = useFactoryAddress();
+
+  const {
+    writeContract,
+    data: hash,
+    isPending,
+    error: writeError,
+    reset,
+  } = useWriteContract();
+
+  const {
+    isLoading: isConfirming,
+    isSuccess,
+    isError: isReceiptError,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({
+    hash,
+    confirmations: 1,
+  });
+
+  const cancelAndWithdraw = (toAddress: `0x${string}`) => {
+    if (!factoryAddress) {
+      console.error('Factory address not configured');
+      return;
+    }
+
+    writeContract({
+      address: factoryAddress,
+      abi: SquaresFactoryABI,
+      functionName: 'cancelAndWithdrawVRFSubscription',
+      args: [toAddress],
+    });
+  };
+
+  return {
+    cancelAndWithdraw,
     isPending,
     isConfirming,
     isSuccess,
