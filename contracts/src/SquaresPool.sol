@@ -206,18 +206,10 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus {
     // ============ VRF Trigger Functions ============
 
     /// @notice Close pool and request VRF (called by factory for batch trigger)
+    /// @dev Only the factory can call this (triggered by admin/scoreAdmin via triggerVRFForAllPools)
     function closePoolAndRequestVRFFromFactory() external onlyFactory inState(PoolState.OPEN) {
         if (squaresSold == 0) revert NoSquaresSold();
         if (vrfRequested) revert VRFAlreadyRequested();
-        _closeAndRequestVRF();
-    }
-
-    /// @notice Manual fallback for operator to close pool and request VRF
-    /// @dev Can be called after vrfTriggerTime if automation fails
-    function closePoolAndRequestVRF() external onlyOperator inState(PoolState.OPEN) {
-        if (squaresSold == 0) revert NoSquaresSold();
-        if (vrfRequested) revert VRFAlreadyRequested();
-
         _closeAndRequestVRF();
     }
 

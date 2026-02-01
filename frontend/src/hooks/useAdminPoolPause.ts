@@ -50,6 +50,7 @@ export function useSetPoolCreationPaused() {
       abi: SquaresFactoryABI,
       functionName: 'setPoolCreationPaused',
       args: [paused],
+      gas: BigInt(100000), // Explicit gas limit to prevent estimation errors
     });
   };
 

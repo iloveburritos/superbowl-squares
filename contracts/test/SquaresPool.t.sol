@@ -258,42 +258,6 @@ contract SquaresPoolTest is Test {
         }
     }
 
-    function test_ClosePoolAndRequestVRF_OperatorFallback() public {
-        // Buy a square
-        uint8[] memory positions = new uint8[](1);
-        positions[0] = 0;
-        vm.prank(alice);
-        pool.buySquares{value: SQUARE_PRICE}(positions, "");
-
-        // Operator manually triggers (no need to wait for trigger time)
-        vm.prank(operator);
-        pool.closePoolAndRequestVRF();
-
-        // Check state is CLOSED
-        (, ISquaresPool.PoolState state, , , , , ,) = pool.getPoolInfo();
-        assertEq(uint8(state), uint8(ISquaresPool.PoolState.CLOSED));
-
-        // Check VRF was requested
-        assertTrue(pool.vrfRequested(), "VRF should be requested");
-    }
-
-    function test_ClosePoolAndRequestVRF_RevertIfNotOperator() public {
-        uint8[] memory positions = new uint8[](1);
-        positions[0] = 0;
-        vm.prank(alice);
-        pool.buySquares{value: SQUARE_PRICE}(positions, "");
-
-        vm.prank(alice);
-        vm.expectRevert(SquaresPool.OnlyOperator.selector);
-        pool.closePoolAndRequestVRF();
-    }
-
-    function test_ClosePoolAndRequestVRF_RevertIfNoSales() public {
-        vm.prank(operator);
-        vm.expectRevert(SquaresPool.NoSquaresSold.selector);
-        pool.closePoolAndRequestVRF();
-    }
-
     function test_GetVRFStatus() public {
         (uint256 triggerTime, bool requested, uint256 requestId, bool numbersAssigned) = pool.getVRFStatus();
 
@@ -599,29 +563,34 @@ contract SquaresPoolTest is Test {
         address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(params);
         SquaresPool pool2 = SquaresPool(payable(pool2Addr));
 
-        // Buy squares in both pools
+        // Buy square in pool1 first
         uint8[] memory positions = new uint8[](1);
         positions[0] = 0;
         vm.prank(alice);
         pool.buySquares{value: SQUARE_PRICE}(positions, "");
+
+        // Close pool1 via factory (first trigger)
+        factory.triggerVRFForAllPools();
+
+        // Pool1 is closed
+        (, ISquaresPool.PoolState state1, , , , , ,) = pool.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.CLOSED));
+
+        // Now buy square in pool2
         vm.prank(alice);
         pool2.buySquares{value: SQUARE_PRICE}(positions, "");
 
-        // Close pool1 manually via operator
-        vm.prank(operator);
-        pool.closePoolAndRequestVRF();
-
-        // Pool1 is closed, pool2 is open
-        (, ISquaresPool.PoolState state1, , , , , ,) = pool.getPoolInfo();
+        // Pool2 is still open
         (, ISquaresPool.PoolState state2, , , , , ,) = pool2.getPoolInfo();
-        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.CLOSED));
         assertEq(uint8(state2), uint8(ISquaresPool.PoolState.OPEN));
 
-        // Trigger VRF for all pools - should only affect pool2
+        // Trigger VRF for all pools again - should only affect pool2, skip pool1
         factory.triggerVRFForAllPools();
 
-        // Pool2 should now be closed
+        // Pool2 should now be closed, pool1 unchanged
+        (, state1, , , , , ,) = pool.getPoolInfo();
         (, state2, , , , , ,) = pool2.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.CLOSED));
         assertEq(uint8(state2), uint8(ISquaresPool.PoolState.CLOSED));
     }
 
@@ -677,6 +646,15 @@ contract SquaresPoolTest is Test {
         uint8[] memory positions = new uint8[](1);
         positions[0] = 0;
 
+        // Pool 4: Buy square first, then close via factory (first trigger)
+        vm.prank(alice);
+        pool4.buySquares{value: SQUARE_PRICE}(positions, "");
+        factory.triggerVRFForAllPools(); // Closes pool4
+
+        // Verify pool4 is closed
+        (, ISquaresPool.PoolState state4Initial, , , , , ,) = pool4.getPoolInfo();
+        assertEq(uint8(state4Initial), uint8(ISquaresPool.PoolState.CLOSED), "Pool 4 should be closed after first trigger");
+
         // Pool 1: Has sales - should be triggered
         vm.prank(alice);
         pool.buySquares{value: SQUARE_PRICE}(positions, "");
@@ -688,13 +666,7 @@ contract SquaresPoolTest is Test {
         // Pool 3: No sales - should be skipped
         // (no purchase)
 
-        // Pool 4: Already closed by operator - should be skipped
-        vm.prank(alice);
-        pool4.buySquares{value: SQUARE_PRICE}(positions, "");
-        vm.prank(operator);
-        pool4.closePoolAndRequestVRF();
-
-        // Trigger VRF for all
+        // Second trigger - should close pool1 and pool2, skip pool3 (no sales) and pool4 (already closed)
         factory.triggerVRFForAllPools();
 
         // Check states
@@ -721,29 +693,6 @@ contract SquaresPoolTest is Test {
         emit VRFTriggeredForAllPools(1);
 
         factory.triggerVRFForAllPools();
-    }
-
-    function test_OperatorClosePoolAndRequestVRF_CannotCallTwice() public {
-        // Buy a square
-        uint8[] memory positions = new uint8[](1);
-        positions[0] = 0;
-        vm.prank(alice);
-        pool.buySquares{value: SQUARE_PRICE}(positions, "");
-
-        // Operator closes pool
-        vm.prank(operator);
-        pool.closePoolAndRequestVRF();
-
-        // Try to close again - should revert with InvalidState
-        vm.prank(operator);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                SquaresPool.InvalidState.selector,
-                ISquaresPool.PoolState.CLOSED,
-                ISquaresPool.PoolState.OPEN
-            )
-        );
-        pool.closePoolAndRequestVRF();
     }
 
     // Event for testing

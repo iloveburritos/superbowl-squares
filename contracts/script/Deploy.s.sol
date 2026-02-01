@@ -14,8 +14,9 @@ contract Deploy is Script {
         uint256 creationFee;
     }
 
-    // Score admin address
-    address constant SCORE_ADMIN = 0x51E5E6F9933fD28B62d714C3f7febECe775b6b95;
+    // Admin address (has full control: pause creation, set fees, withdraw, etc.)
+    // This address will be both admin AND scoreAdmin
+    address constant ADMIN = 0x51E5E6F9933fD28B62d714C3f7febECe775b6b95;
 
     function run() external {
         uint256 chainId = block.chainid;
@@ -33,14 +34,18 @@ contract Deploy is Script {
         // Set VRF funding amount (1 ETH per pool)
         factory.setVRFFundingAmount(1 ether);
 
-        // Set score admin
-        factory.setScoreAdmin(SCORE_ADMIN);
+        // Set score admin (same as admin for unified control)
+        factory.setScoreAdmin(ADMIN);
+
+        // Transfer admin to ADMIN address (deployer wallet may differ)
+        factory.transferAdmin(ADMIN);
 
         console.log("SquaresFactory deployed at:", address(factory));
         console.log("Chain ID:", chainId);
         console.log("VRF Coordinator:", config.vrfCoordinator);
         console.log("VRF Subscription ID (factory-owned):", factory.defaultVRFSubscriptionId());
-        console.log("Score Admin:", SCORE_ADMIN);
+        console.log("Admin:", ADMIN);
+        console.log("Score Admin:", ADMIN);
 
         vm.stopBroadcast();
     }

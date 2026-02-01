@@ -21,13 +21,6 @@ export const SquaresPoolABI = [
   // VRF functions
   {
     type: 'function',
-    name: 'closePoolAndRequestVRF',
-    inputs: [],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     name: 'closePoolAndRequestVRFFromFactory',
     inputs: [],
     outputs: [],

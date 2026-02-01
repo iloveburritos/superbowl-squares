@@ -26,7 +26,7 @@ import {
 } from '@/hooks/usePool';
 import { useBuySquares } from '@/hooks/useBuySquares';
 import { useFinalDistributionShare, useUnclaimedInfo } from '@/hooks/useClaimPayout';
-import { useClosePoolAndRequestVRF, useSubmitScore } from '@/hooks/useOperatorActions';
+import { useSubmitScore } from '@/hooks/useOperatorActions';
 import { useVRFStatus, formatTimeRemaining } from '@/hooks/useVRFStatus';
 
 import { PoolState, POOL_STATE_LABELS, Quarter, QUARTER_LABELS, getFactoryAddress } from '@/lib/contracts';
@@ -58,16 +58,6 @@ export default function PoolPage() {
 
   // VRF Automation status
   const { vrfStatus, timeUntilTrigger, automationStatus, refetch: refetchVRFStatus } = useVRFStatus(poolAddress);
-
-  // Operator fallback action (manual VRF trigger)
-  const {
-    closePoolAndRequestVRF,
-    isPending: isVRFPending,
-    isConfirming: isVRFConfirming,
-    isSuccess: isVRFSuccess,
-    error: vrfError,
-    reset: resetVRF,
-  } = useClosePoolAndRequestVRF(poolAddress);
 
   // Scores
   const { score: q1Score } = usePoolScore(poolAddress, Quarter.Q1);
@@ -235,6 +225,7 @@ export default function PoolPage() {
   useEffect(() => {
     if (purchaseSuccess) {
       setShowPurchaseSuccess(true);
+      setSelectedSquares([]); // Clear selected squares after successful purchase
       refetchGrid();
       refetchInfo();
       // Auto-hide after 5 seconds
@@ -263,16 +254,6 @@ export default function PoolPage() {
     error: submitScoreError,
     reset: resetSubmitScore,
   } = useSubmitScore(poolAddress);
-
-  // Refetch pool info and VRF status when VRF request succeeds
-  useEffect(() => {
-    if (isVRFSuccess) {
-      refetchInfo();
-      refetchVRFStatus();
-      refetchNumbers();
-      resetVRF();
-    }
-  }, [isVRFSuccess, refetchInfo, refetchVRFStatus, refetchNumbers, resetVRF]);
 
   // Refetch pool info when score submission succeeds
   useEffect(() => {
@@ -389,8 +370,15 @@ export default function PoolPage() {
   const handleBuy = async () => {
     if (selectedSquares.length === 0 || !poolInfo) return;
 
+    // If we just completed approval and user clicks again, continue with buy
+    if (isApproveSuccess && buyStep === 'approving') {
+      await continueBuyAfterApproval(selectedSquares, poolInfo.squarePrice, poolPassword);
+      return;
+    }
+
     await buySquares(selectedSquares, poolInfo.squarePrice, poolPassword);
-    setSelectedSquares([]);
+    // Don't clear squares here - they need to stay selected for ERC20 approve->buy flow
+    // Squares are cleared when purchaseSuccess fires
   };
 
   // Format date
@@ -811,6 +799,14 @@ export default function PoolPage() {
                             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             Approving...
                           </span>
+                        ) : buyStep === 'approving' && isApproveSuccess ? (
+                          <span className="flex items-center gap-2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                              <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                            </svg>
+                            Buy {selectedSquares.length} Squares
+                          </span>
                         ) : isBuying ? (
                           <span className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -925,48 +921,6 @@ export default function PoolPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Operator Fallback Panel - only shown when automation hasn't triggered */}
-            {isOperator && poolInfo.state === PoolState.OPEN && timeUntilTrigger !== undefined && timeUntilTrigger <= 0 && !vrfStatus?.vrfRequested && (
-              <div className="card p-6 border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-transparent">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-purple-400">
-                      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="2" />
-                      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-purple-300" style={{ fontFamily: 'var(--font-display)' }}>
-                    OPERATOR CONTROLS
-                  </h2>
-                </div>
-                <p className="text-xs text-[var(--smoke)] mb-3">
-                  Automation hasn't triggered yet. You can manually assign numbers.
-                </p>
-                <button
-                  onClick={closePoolAndRequestVRF}
-                  disabled={isVRFPending || isVRFConfirming}
-                  className="w-full py-2 px-4 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 hover:bg-purple-500/30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isVRFPending ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Confirm in Wallet...
-                    </span>
-                  ) : isVRFConfirming ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Assigning Numbers...
-                    </span>
-                  ) : (
-                    'Assign Numbers Now'
-                  )}
-                </button>
-                {vrfError && (
-                  <p className="text-xs text-[var(--danger)] mt-2">{vrfError.message}</p>
-                )}
-              </div>
-            )}
-
             {/* Numbers Assigned Status */}
             {poolInfo.state >= PoolState.NUMBERS_ASSIGNED && (
               <div className="card p-6 border-[var(--turf-green)]/30 bg-gradient-to-br from-[var(--turf-green)]/5 to-transparent">
@@ -1525,9 +1479,9 @@ export default function PoolPage() {
               <p className="text-sm font-bold text-[var(--chrome)]">{POOL_STATE_LABELS[poolInfo.state]}</p>
             </div>
 
-            {/* VRF Controls */}
+            {/* VRF Status */}
             <div className="mb-4">
-              <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">VRF CONTROLS</h4>
+              <h4 className="text-xs font-bold text-[var(--smoke)] mb-2 tracking-wider">VRF STATUS</h4>
               <div className="space-y-2 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
                 <div className="flex justify-between text-xs">
                   <span className="text-[var(--smoke)]">VRF Requested</span>
@@ -1550,33 +1504,14 @@ export default function PoolPage() {
                   </span>
                 </div>
                 {poolInfo.state === PoolState.OPEN && !vrfStatus?.vrfRequested && (
-                  <button
-                    onClick={closePoolAndRequestVRF}
-                    disabled={isVRFPending || isVRFConfirming}
-                    className="w-full mt-2 py-2 px-3 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isVRFPending ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Confirm in Wallet...
-                      </span>
-                    ) : isVRFConfirming ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Processing...
-                      </span>
-                    ) : (
-                      'Assign Numbers Now'
-                    )}
-                  </button>
+                  <p className="text-xs text-[var(--smoke)] mt-2">
+                    VRF is triggered via the admin panel.
+                  </p>
                 )}
                 {vrfStatus?.vrfRequested && !vrfStatus.numbersAssigned && (
                   <p className="text-xs text-blue-400 mt-2">
                     Waiting for VRF response (~30 sec on Sepolia)...
                   </p>
-                )}
-                {vrfError && (
-                  <p className="text-xs text-[var(--danger)] mt-2">{vrfError.message}</p>
                 )}
               </div>
             </div>

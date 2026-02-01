@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { formatEther, zeroAddress } from 'viem';
 import { useChainId } from 'wagmi';
-import { usePoolInfo } from '@/hooks/usePool';
+import { usePoolInfo, useIsPrivate } from '@/hooks/usePool';
 import { PoolState, POOL_STATE_LABELS } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo } from './Logos';
 import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
@@ -12,11 +12,18 @@ interface PoolCardProps {
   address: `0x${string}`;
   showOperatorBadge?: boolean;
   squareCount?: number;
+  hideIfPrivate?: boolean;
 }
 
-export function PoolCard({ address, showOperatorBadge, squareCount }: PoolCardProps) {
+export function PoolCard({ address, showOperatorBadge, squareCount, hideIfPrivate }: PoolCardProps) {
   const { poolInfo, isLoading, error } = usePoolInfo(address);
+  const { isPrivate, isLoading: isPrivateLoading } = useIsPrivate(address);
   const chainId = useChainId();
+
+  // Hide private pools if requested
+  if (hideIfPrivate && !isPrivateLoading && isPrivate) {
+    return null;
+  }
 
   // Get token info for the pool's payment token
   const getPaymentToken = () => {

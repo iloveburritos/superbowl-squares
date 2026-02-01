@@ -59,7 +59,6 @@ interface ISquaresPool {
     function claimPayout(Quarter quarter) external;
 
     // VRF functions
-    function closePoolAndRequestVRF() external;
     function closePoolAndRequestVRFFromFactory() external;
 
     // Score functions
