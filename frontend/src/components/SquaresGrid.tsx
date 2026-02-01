@@ -87,18 +87,23 @@ function SquareButton({
       title={getTooltip()}
     >
       {isOwned && (
-        <div className="flex flex-col items-center justify-center w-full h-full p-0.5 overflow-hidden">
-          {ensAvatar ? (
+        <div className="relative flex flex-col items-center justify-center w-full h-full p-0.5 overflow-hidden">
+          {ensAvatar && (
             <img
               src={ensAvatar}
               alt={ensName || 'Avatar'}
-              className="w-full h-full object-cover rounded-sm"
+              className="absolute inset-0 w-full h-full object-cover rounded-sm"
             />
-          ) : (
-            <span className="text-[8px] font-medium px-0.5 opacity-80 leading-tight text-center overflow-hidden max-h-full break-all line-clamp-3">
-              <AddressDisplay address={owner} isMine={isMine} />
-            </span>
           )}
+          <span className={`relative z-10 text-[8px] font-bold leading-tight text-center overflow-hidden max-h-full break-all line-clamp-3 rounded-sm px-1 py-0.5 ${
+            ensAvatar
+              ? 'text-white bg-black/70'
+              : isMine
+                ? 'text-white'
+                : 'text-white bg-black/50'
+          }`}>
+            <AddressDisplay address={owner} isMine={isMine} />
+          </span>
         </div>
       )}
     </button>

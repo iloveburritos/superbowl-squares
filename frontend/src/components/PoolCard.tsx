@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { formatEther, zeroAddress } from 'viem';
 import { useChainId } from 'wagmi';
-import { usePoolInfo, useIsPrivate } from '@/hooks/usePool';
+import { usePoolInfo, useIsPrivate, usePoolOperator } from '@/hooks/usePool';
 import { PoolState, POOL_STATE_LABELS } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo } from './Logos';
+import { AddressDisplay } from './AddressDisplay';
 import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 interface PoolCardProps {
@@ -18,6 +19,7 @@ interface PoolCardProps {
 export function PoolCard({ address, showOperatorBadge, squareCount, hideIfPrivate }: PoolCardProps) {
   const { poolInfo, isLoading, error } = usePoolInfo(address);
   const { isPrivate, isLoading: isPrivateLoading } = useIsPrivate(address);
+  const { operator } = usePoolOperator(address);
   const chainId = useChainId();
 
   // Hide private pools if requested
@@ -171,6 +173,16 @@ export function PoolCard({ address, showOperatorBadge, squareCount, hideIfPrivat
           {poolInfo.teamBName.toLowerCase().includes('patriot') && <PatriotsLogo size={20} />}
           {poolInfo.teamBName.toLowerCase().includes('seahawk') && <SeahawksLogo size={20} />}
         </div>
+
+        {/* Creator */}
+        {operator && (
+          <p className="text-xs text-[var(--smoke)] mb-4">
+            Created by{' '}
+            <span className="text-[var(--chrome)]">
+              <AddressDisplay address={operator} />
+            </span>
+          </p>
+        )}
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">

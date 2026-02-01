@@ -582,6 +582,14 @@ export default function PoolPage() {
                 <span className="text-[var(--smoke)] mx-3">vs</span>
                 <span className="font-bold text-[var(--championship-gold)]">{poolInfo.teamBName}</span>
               </p>
+              {operator && (
+                <p className="text-sm text-[var(--smoke)] mt-2">
+                  Created by{' '}
+                  <span className="text-[var(--chrome)]">
+                    <AddressDisplay address={operator} />
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Quick stats */}
