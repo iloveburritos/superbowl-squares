@@ -76,7 +76,7 @@ export const config = createConfig({
 // Chain-specific contract addresses
 export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
   // Mainnet
-  1: '0x0000000000000000000000000000000000000000',
+  1: '0x4e670Ce734c08e352b2C7aD8678fCDa63047D248',
   // Base
   8453: '0xd573508f1D6B8751F72e3642a32c4Cc2EeFb5eA3',
   // Arbitrum
