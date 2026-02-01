@@ -67,6 +67,14 @@ interface IVRFCoordinatorV2Plus {
 
     /// @notice Check if pending request exists for a consumer
     function pendingRequestExists(uint256 subId) external view returns (bool);
+
+    /// @notice Create a new subscription
+    /// @return subId The new subscription ID
+    function createSubscription() external returns (uint256 subId);
+
+    /// @notice Fund a subscription with native tokens (ETH)
+    /// @param subId The subscription ID to fund
+    function fundSubscriptionWithNative(uint256 subId) external payable;
 }
 
 /// @title VRFConsumerBaseV2Plus

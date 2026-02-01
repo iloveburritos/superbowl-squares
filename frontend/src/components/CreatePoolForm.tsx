@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { parseEther, keccak256, toBytes } from 'viem';
-import { useCreatePool } from '@/hooks/useFactory';
+import { useCreatePool, usePoolCreationCost } from '@/hooks/useFactory';
+import { usePoolCreationPaused } from '@/hooks/useAdminPoolPause';
 import { useRouter } from 'next/navigation';
 import type { PoolParams } from '@/lib/contracts';
 import { PatriotsLogo, SeahawksLogo, SuperBowlLXLogo } from './Logos';
@@ -42,6 +43,8 @@ export function CreatePoolForm() {
   const { address, chainId } = useAccount();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const { createPool, isPending, isConfirming, isSuccess, isReceiptError, error, poolAddress, hash, refetchReceipt, isFactoryConfigured } = useCreatePool();
+  const { totalCost, vrfFundingAmount, isLoading: isLoadingCost } = usePoolCreationCost();
+  const { isPaused: poolCreationPaused, isLoading: isPauseLoading } = usePoolCreationPaused();
 
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
   const [selectedToken, setSelectedToken] = useState<Token>(ETH_TOKEN);
@@ -173,7 +176,7 @@ export function CreatePoolForm() {
       passwordHash,
     };
 
-    await createPool(params);
+    await createPool(params, totalCost);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,6 +208,26 @@ export function CreatePoolForm() {
 
   return (
     <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate className="space-y-6">
+      {/* Pool Creation Paused Banner */}
+      {poolCreationPaused && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-red-400">
+                <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold text-red-400">Pool Creation is Currently Disabled</p>
+              <p className="text-sm text-[var(--smoke)] mt-1">
+                New pool creation has been temporarily paused. Please check back later or contact the administrator.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Progress Steps */}
       <div className="flex justify-between items-center mb-8 relative">
         {/* Background line - connects icon centers */}
@@ -846,6 +869,29 @@ export function CreatePoolForm() {
               </span>
             </div>
           </div>
+
+          {/* Pool Creation Cost */}
+          {totalCost !== undefined && totalCost > BigInt(0) && (
+            <div className="p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30">
+              <div className="flex items-start gap-3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)] mt-0.5 shrink-0">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 6v12M9 9h6M9 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[var(--championship-gold)] font-medium">Pool Creation Deposit</span>
+                    <span className="font-bold text-[var(--championship-gold)]">
+                      {(Number(totalCost) / 1e18).toFixed(4)} ETH
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--smoke)] mt-1">
+                    This deposit funds Chainlink VRF for random number generation. It ensures your pool can assign numbers fairly.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {payoutSum !== 100 && (
@@ -972,7 +1018,7 @@ export function CreatePoolForm() {
         ) : (
           <button
             type="submit"
-            disabled={!address || isPending || isConfirming || isSwitching || payoutSum !== 100 || !canSubmit || !isFactoryConfigured}
+            disabled={!address || isPending || isConfirming || isSwitching || payoutSum !== 100 || !canSubmit || !isFactoryConfigured || isLoadingCost || !!poolCreationPaused}
             className="btn-primary px-10 py-4 text-lg"
           >
             {isPending ? (
@@ -1202,6 +1248,7 @@ function SuccessModal({
             {/* CTA Buttons */}
             {onViewPool ? (
               <button
+                type="button"
                 onClick={onViewPool}
                 className="w-full btn-primary py-4 text-lg group"
               >
@@ -1226,6 +1273,7 @@ function SuccessModal({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={onViewMyPools}
                 className="w-full btn-primary py-4 text-lg group"
               >
@@ -1256,6 +1304,7 @@ function SuccessModal({
                 <p className="text-sm text-[var(--smoke)] mb-3">Share your pool with friends</p>
                 <div className="flex gap-3 justify-center">
                   <button
+                    type="button"
                     onClick={handleCopyLink}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--steel)]/30 border border-[var(--steel)]/50 hover:bg-[var(--steel)]/50 transition-colors text-sm"
                   >
@@ -1277,6 +1326,7 @@ function SuccessModal({
                     )}
                   </button>
                   <button
+                    type="button"
                     onClick={handleShareTwitter}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1DA1F2]/20 border border-[#1DA1F2]/50 hover:bg-[#1DA1F2]/30 transition-colors text-sm text-[#1DA1F2]"
                   >
@@ -1286,6 +1336,7 @@ function SuccessModal({
                     <span>X</span>
                   </button>
                   <button
+                    type="button"
                     onClick={handleShareFarcaster}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#8465CB]/20 border border-[#8465CB]/50 hover:bg-[#8465CB]/30 transition-colors text-sm text-[#8465CB]"
                   >

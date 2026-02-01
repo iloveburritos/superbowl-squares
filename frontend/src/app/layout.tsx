@@ -10,6 +10,8 @@ import { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
 import { PatriotsLogo, SeahawksLogo, SuperBowlLXLogo } from '@/components/Logos';
+import { useAccount } from 'wagmi';
+import { SCORE_ADMIN_ADDRESS } from '@/hooks/useAdminScoreSubmit';
 
 export default function RootLayout({
   children,
@@ -117,6 +119,9 @@ export default function RootLayout({
 }
 
 function Header() {
+  const { address } = useAccount();
+  const isAdmin = address?.toLowerCase() === SCORE_ADMIN_ADDRESS.toLowerCase();
+
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--steel)]/30 bg-[var(--midnight)]/80 backdrop-blur-xl">
       <div className="container mx-auto px-6 py-4">
@@ -145,6 +150,7 @@ function Header() {
             <NavLink href="/pools">Browse Pools</NavLink>
             <NavLink href="/pools/my">My Pools</NavLink>
             <NavLink href="/pools/create">Create Pool</NavLink>
+            {isAdmin && <NavLink href="/admin">Admin</NavLink>}
           </nav>
 
           {/* Wallet */}

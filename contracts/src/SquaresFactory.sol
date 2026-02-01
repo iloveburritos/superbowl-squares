@@ -4,10 +4,9 @@ pragma solidity ^0.8.24;
 import {SquaresPool} from "./SquaresPool.sol";
 import {ISquaresPool} from "./interfaces/ISquaresPool.sol";
 import {IVRFCoordinatorV2Plus} from "./interfaces/IVRFCoordinatorV2Plus.sol";
-import {IAutomationRegistrar} from "./interfaces/IAutomationRegistrar.sol";
 
 /// @title SquaresFactory
-/// @notice Factory for deploying Super Bowl Squares pools with Chainlink VRF + Automation
+/// @notice Factory for deploying Super Bowl Squares pools with Chainlink VRF
 contract SquaresFactory {
     // ============ Events ============
     event PoolCreated(
@@ -15,47 +14,52 @@ contract SquaresFactory {
         address indexed creator,
         string name,
         uint256 squarePrice,
-        address paymentToken,
-        uint256 upkeepId
+        address paymentToken
     );
+    event VRFTriggeredForAllPools(uint256 poolsTriggered);
     event CreationFeeUpdated(uint256 oldFee, uint256 newFee);
     event FeesWithdrawn(address indexed to, uint256 amount);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
+    event ScoreAdminUpdated(address indexed oldAdmin, address indexed newAdmin);
+    event VRFSubscriptionCreated(uint256 indexed subscriptionId);
+    event VRFConsumerAdded(uint256 indexed subscriptionId, address indexed consumer);
+    event VRFSubscriptionFunded(uint256 indexed subscriptionId, uint256 amount);
+    event ScoreSubmittedToAllPools(uint8 indexed quarter, uint8 teamAScore, uint8 teamBScore);
+    event PoolCreationPaused(bool paused);
 
     // ============ State ============
     address[] public allPools;
     mapping(address => address[]) public poolsByCreator;
-    mapping(address => uint256) public poolUpkeepIds; // pool => Automation upkeep ID
 
     // External contract addresses (immutable per chain)
-    address public immutable functionsRouter;
     address public immutable vrfCoordinator;
-    address public immutable automationRegistrar;
-
-    // Default Chainlink Functions configuration
-    uint64 public defaultFunctionsSubscriptionId;
-    bytes32 public defaultFunctionsDonId;
-    string public defaultFunctionsSource;
 
     // Default Chainlink VRF configuration
     uint256 public defaultVRFSubscriptionId;
     bytes32 public defaultVRFKeyHash;
 
-    // Pool creation fee (covers VRF + Automation costs)
+    // Pool creation fee (covers VRF costs)
     uint256 public creationFee;
 
-    // Automation registration parameters
-    uint32 public automationGasLimit;
-    uint96 public automationFundingAmount;
+    // VRF funding amount (ETH to fund VRF per pool)
+    uint96 public vrfFundingAmount;
 
     // Admin
     address public admin;
 
+    // Score Admin - can submit scores to all pools
+    address public scoreAdmin;
+
+    // Pool creation pause state
+    bool public poolCreationPaused;
+
     // ============ Errors ============
     error OnlyAdmin();
+    error Unauthorized();
     error InsufficientCreationFee(uint256 sent, uint256 required);
     error TransferFailed();
     error InvalidAddress();
+    error PoolCreationIsPaused();
 
     // ============ Modifiers ============
     modifier onlyAdmin() {
@@ -65,51 +69,24 @@ contract SquaresFactory {
 
     // ============ Constructor ============
     constructor(
-        address _functionsRouter,
         address _vrfCoordinator,
-        address _automationRegistrar,
-        uint64 _functionsSubscriptionId,
-        bytes32 _functionsDonId,
-        uint256 _vrfSubscriptionId,
         bytes32 _vrfKeyHash,
         uint256 _creationFee
     ) {
-        if (_functionsRouter == address(0)) revert InvalidAddress();
         if (_vrfCoordinator == address(0)) revert InvalidAddress();
-        if (_automationRegistrar == address(0)) revert InvalidAddress();
 
-        functionsRouter = _functionsRouter;
         vrfCoordinator = _vrfCoordinator;
-        automationRegistrar = _automationRegistrar;
-        defaultFunctionsSubscriptionId = _functionsSubscriptionId;
-        defaultFunctionsDonId = _functionsDonId;
-        defaultVRFSubscriptionId = _vrfSubscriptionId;
         defaultVRFKeyHash = _vrfKeyHash;
         creationFee = _creationFee;
         admin = msg.sender;
+        scoreAdmin = msg.sender; // Initially deployer is score admin
 
-        // Default automation parameters
-        automationGasLimit = 200000;
-        automationFundingAmount = 0.1 ether; // Amount to fund upkeep
+        // Create VRF subscription - factory becomes the owner
+        defaultVRFSubscriptionId = IVRFCoordinatorV2Plus(_vrfCoordinator).createSubscription();
+        emit VRFSubscriptionCreated(defaultVRFSubscriptionId);
     }
 
     // ============ Admin Functions ============
-
-    /// @notice Set the default Chainlink Functions JavaScript source
-    /// @param source The JavaScript source code for fetching scores
-    function setDefaultFunctionsSource(string calldata source) external onlyAdmin {
-        defaultFunctionsSource = source;
-    }
-
-    /// @notice Update Functions subscription
-    function setFunctionsSubscription(uint64 subscriptionId) external onlyAdmin {
-        defaultFunctionsSubscriptionId = subscriptionId;
-    }
-
-    /// @notice Update Functions DON ID
-    function setFunctionsDonId(bytes32 donId) external onlyAdmin {
-        defaultFunctionsDonId = donId;
-    }
 
     /// @notice Update VRF subscription
     function setVRFSubscription(uint256 subscriptionId) external onlyAdmin {
@@ -127,10 +104,9 @@ contract SquaresFactory {
         creationFee = _creationFee;
     }
 
-    /// @notice Update automation parameters
-    function setAutomationParams(uint32 _gasLimit, uint96 _fundingAmount) external onlyAdmin {
-        automationGasLimit = _gasLimit;
-        automationFundingAmount = _fundingAmount;
+    /// @notice Update VRF funding amount per pool
+    function setVRFFundingAmount(uint96 _amount) external onlyAdmin {
+        vrfFundingAmount = _amount;
     }
 
     /// @notice Withdraw accumulated fees
@@ -149,33 +125,86 @@ contract SquaresFactory {
         admin = newAdmin;
     }
 
+    /// @notice Set the score admin who can submit scores to all pools
+    function setScoreAdmin(address _scoreAdmin) external onlyAdmin {
+        if (_scoreAdmin == address(0)) revert InvalidAddress();
+        emit ScoreAdminUpdated(scoreAdmin, _scoreAdmin);
+        scoreAdmin = _scoreAdmin;
+    }
+
+    /// @notice Pause or unpause pool creation
+    function setPoolCreationPaused(bool _paused) external onlyAdmin {
+        poolCreationPaused = _paused;
+        emit PoolCreationPaused(_paused);
+    }
+
+    // ============ Score Admin Functions ============
+
+    /// @notice Submit score to all pools that are ready for this quarter
+    /// @param quarter The quarter to submit (0=Q1, 1=Q2, 2=Q3, 3=Final)
+    /// @param teamAScore Team A's score
+    /// @param teamBScore Team B's score
+    function submitScoreToAllPools(
+        uint8 quarter,
+        uint8 teamAScore,
+        uint8 teamBScore
+    ) external {
+        if (msg.sender != scoreAdmin && msg.sender != admin) revert Unauthorized();
+
+        uint256 poolCount = allPools.length;
+        for (uint256 i = 0; i < poolCount; i++) {
+            address pool = allPools[i];
+            // Only submit to pools that are ready for this quarter
+            // Use try/catch to skip pools that aren't ready or have errors
+            try SquaresPool(payable(pool)).submitScoreFromFactory(quarter, teamAScore, teamBScore) {
+                // Success
+            } catch {
+                // Skip pools that aren't ready or have errors
+            }
+        }
+
+        emit ScoreSubmittedToAllPools(quarter, teamAScore, teamBScore);
+    }
+
+    /// @notice Trigger VRF for all pools that are ready (OPEN state, past vrfTriggerTime, has sales)
+    function triggerVRFForAllPools() external {
+        if (msg.sender != scoreAdmin && msg.sender != admin) revert Unauthorized();
+
+        uint256 triggered = 0;
+        uint256 poolCount = allPools.length;
+        for (uint256 i = 0; i < poolCount; i++) {
+            try SquaresPool(payable(allPools[i])).closePoolAndRequestVRFFromFactory() {
+                triggered++;
+            } catch {
+                // Skip pools that aren't ready
+            }
+        }
+
+        emit VRFTriggeredForAllPools(triggered);
+    }
+
     // ============ Factory Functions ============
 
     /// @notice Create a new Super Bowl Squares pool
     /// @param params Pool configuration parameters
     /// @return pool Address of the newly created pool contract
     function createPool(ISquaresPool.PoolParams calldata params) external payable returns (address pool) {
-        // Check creation fee
-        if (msg.value < creationFee) {
-            revert InsufficientCreationFee(msg.value, creationFee);
+        if (poolCreationPaused) revert PoolCreationIsPaused();
+
+        // Calculate total required (creation fee + VRF funding)
+        uint256 totalRequired = creationFee + vrfFundingAmount;
+        if (msg.value < totalRequired) {
+            revert InsufficientCreationFee(msg.value, totalRequired);
         }
 
         // Deploy new pool contract
         SquaresPool newPool = new SquaresPool(
-            functionsRouter,
             vrfCoordinator,
             msg.sender // operator
         );
 
         // Initialize with parameters
         newPool.initialize(params);
-
-        // Set Chainlink Functions config
-        newPool.setFunctionsConfig(
-            defaultFunctionsSubscriptionId,
-            defaultFunctionsDonId,
-            defaultFunctionsSource
-        );
 
         // Set VRF config
         newPool.setVRFConfig(
@@ -185,55 +214,31 @@ contract SquaresFactory {
 
         pool = address(newPool);
 
-        // NOTE: Pool must be manually added as VRF consumer by subscription owner
-        // via Chainlink VRF UI at https://vrf.chain.link/
+        // Add pool as VRF consumer (factory is subscription owner, so this works)
+        IVRFCoordinatorV2Plus(vrfCoordinator).addConsumer(defaultVRFSubscriptionId, pool);
+        emit VRFConsumerAdded(defaultVRFSubscriptionId, pool);
 
-        // Register pool with Chainlink Automation (skip if no funding set)
-        uint256 upkeepId = 0;
-        if (automationFundingAmount > 0) {
-            upkeepId = _registerAutomation(pool, params.name);
-            poolUpkeepIds[pool] = upkeepId;
+        // Fund the VRF subscription with native ETH
+        if (vrfFundingAmount > 0) {
+            IVRFCoordinatorV2Plus(vrfCoordinator).fundSubscriptionWithNative{value: vrfFundingAmount}(
+                defaultVRFSubscriptionId
+            );
+            emit VRFSubscriptionFunded(defaultVRFSubscriptionId, vrfFundingAmount);
         }
 
         // Track pool
         allPools.push(pool);
         poolsByCreator[msg.sender].push(pool);
 
-        emit PoolCreated(pool, msg.sender, params.name, params.squarePrice, params.paymentToken, upkeepId);
+        emit PoolCreated(pool, msg.sender, params.name, params.squarePrice, params.paymentToken);
 
         // Refund excess payment
-        if (msg.value > creationFee) {
-            (bool success,) = msg.sender.call{value: msg.value - creationFee}("");
+        if (msg.value > totalRequired) {
+            (bool success,) = msg.sender.call{value: msg.value - totalRequired}("");
             if (!success) revert TransferFailed();
         }
 
         return pool;
-    }
-
-    /// @notice Register a pool with Chainlink Automation
-    /// @param pool The pool address to register
-    /// @param poolName The pool name for the upkeep
-    /// @return upkeepId The registered upkeep ID
-    function _registerAutomation(address pool, string memory poolName) internal returns (uint256 upkeepId) {
-        IAutomationRegistrar.RegistrationParams memory registrationParams = IAutomationRegistrar.RegistrationParams({
-            name: string(abi.encodePacked("Squares Pool: ", poolName)),
-            encryptedEmail: "",
-            upkeepContract: pool,
-            gasLimit: automationGasLimit,
-            adminAddress: admin, // Factory admin manages upkeeps
-            triggerType: 0, // Conditional trigger
-            checkData: "",
-            triggerConfig: "",
-            offchainConfig: "",
-            amount: automationFundingAmount
-        });
-
-        // Register and fund the upkeep with native ETH
-        upkeepId = IAutomationRegistrar(automationRegistrar).registerUpkeep{value: automationFundingAmount}(
-            registrationParams
-        );
-
-        return upkeepId;
     }
 
     // ============ View Functions ============
@@ -272,11 +277,6 @@ contract SquaresFactory {
     /// @notice Get pool count for a specific creator
     function getPoolCountByCreator(address creator) external view returns (uint256) {
         return poolsByCreator[creator].length;
-    }
-
-    /// @notice Get the upkeep ID for a pool
-    function getPoolUpkeepId(address pool) external view returns (uint256) {
-        return poolUpkeepIds[pool];
     }
 
     // ============ Receive ETH ============

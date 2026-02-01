@@ -2,12 +2,7 @@ export const SquaresFactoryABI = [
   {
     type: 'constructor',
     inputs: [
-      { name: '_functionsRouter', type: 'address' },
       { name: '_vrfCoordinator', type: 'address' },
-      { name: '_automationRegistrar', type: 'address' },
-      { name: '_functionsSubscriptionId', type: 'uint64' },
-      { name: '_functionsDonId', type: 'bytes32' },
-      { name: '_vrfSubscriptionId', type: 'uint256' },
       { name: '_vrfKeyHash', type: 'bytes32' },
       { name: '_creationFee', type: 'uint256' },
     ],
@@ -72,28 +67,7 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
-    name: 'getPoolUpkeepId',
-    inputs: [{ name: 'pool', type: 'address' }],
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'functionsRouter',
-    inputs: [],
-    outputs: [{ type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'vrfCoordinator',
-    inputs: [],
-    outputs: [{ type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'automationRegistrar',
     inputs: [],
     outputs: [{ type: 'address' }],
     stateMutability: 'view',
@@ -107,23 +81,9 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
-    name: 'defaultFunctionsSubscriptionId',
+    name: 'vrfFundingAmount',
     inputs: [],
-    outputs: [{ type: 'uint64' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'defaultFunctionsDonId',
-    inputs: [],
-    outputs: [{ type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'defaultFunctionsSource',
-    inputs: [],
-    outputs: [{ type: 'string' }],
+    outputs: [{ type: 'uint96' }],
     stateMutability: 'view',
   },
   {
@@ -149,22 +109,29 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
-    name: 'setDefaultFunctionsSource',
-    inputs: [{ name: 'source', type: 'string' }],
+    name: 'scoreAdmin',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'poolCreationPaused',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'setVRFSubscription',
+    inputs: [{ name: 'subscriptionId', type: 'uint256' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },
   {
     type: 'function',
-    name: 'setFunctionsSubscription',
-    inputs: [{ name: 'subscriptionId', type: 'uint64' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'setFunctionsDonId',
-    inputs: [{ name: 'donId', type: 'bytes32' }],
+    name: 'setVRFKeyHash',
+    inputs: [{ name: 'keyHash', type: 'bytes32' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -172,6 +139,45 @@ export const SquaresFactoryABI = [
     type: 'function',
     name: 'setCreationFee',
     inputs: [{ name: '_creationFee', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setVRFFundingAmount',
+    inputs: [{ name: '_amount', type: 'uint96' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setScoreAdmin',
+    inputs: [{ name: '_scoreAdmin', type: 'address' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setPoolCreationPaused',
+    inputs: [{ name: '_paused', type: 'bool' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'submitScoreToAllPools',
+    inputs: [
+      { name: 'quarter', type: 'uint8' },
+      { name: 'teamAScore', type: 'uint8' },
+      { name: 'teamBScore', type: 'uint8' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'triggerVRFForAllPools',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -198,8 +204,12 @@ export const SquaresFactoryABI = [
       { name: 'name', type: 'string', indexed: false },
       { name: 'squarePrice', type: 'uint256', indexed: false },
       { name: 'paymentToken', type: 'address', indexed: false },
-      { name: 'upkeepId', type: 'uint256', indexed: false },
     ],
+  },
+  {
+    type: 'event',
+    name: 'VRFTriggeredForAllPools',
+    inputs: [{ name: 'poolsTriggered', type: 'uint256', indexed: false }],
   },
   {
     type: 'event',
@@ -226,8 +236,56 @@ export const SquaresFactoryABI = [
     ],
   },
   {
+    type: 'event',
+    name: 'ScoreAdminUpdated',
+    inputs: [
+      { name: 'oldAdmin', type: 'address', indexed: true },
+      { name: 'newAdmin', type: 'address', indexed: true },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'VRFSubscriptionCreated',
+    inputs: [{ name: 'subscriptionId', type: 'uint256', indexed: true }],
+  },
+  {
+    type: 'event',
+    name: 'VRFConsumerAdded',
+    inputs: [
+      { name: 'subscriptionId', type: 'uint256', indexed: true },
+      { name: 'consumer', type: 'address', indexed: true },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'VRFSubscriptionFunded',
+    inputs: [
+      { name: 'subscriptionId', type: 'uint256', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ScoreSubmittedToAllPools',
+    inputs: [
+      { name: 'quarter', type: 'uint8', indexed: true },
+      { name: 'teamAScore', type: 'uint8', indexed: false },
+      { name: 'teamBScore', type: 'uint8', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'PoolCreationPaused',
+    inputs: [{ name: 'paused', type: 'bool', indexed: false }],
+  },
+  {
     type: 'error',
     name: 'OnlyAdmin',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'Unauthorized',
     inputs: [],
   },
   {
@@ -246,6 +304,11 @@ export const SquaresFactoryABI = [
   {
     type: 'error',
     name: 'InvalidAddress',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'PoolCreationIsPaused',
     inputs: [],
   },
 ] as const;

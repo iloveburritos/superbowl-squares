@@ -9,7 +9,6 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { SquaresGrid } from '@/components/SquaresGrid';
 import { ScoreDisplay } from '@/components/ScoreDisplay';
 import { PayoutBreakdown } from '@/components/PayoutBreakdown';
-import { ScoreFetcher } from '@/components/ScoreFetcher';
 import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 import {
@@ -26,7 +25,7 @@ import {
   useIsPrivate,
 } from '@/hooks/usePool';
 import { useBuySquares } from '@/hooks/useBuySquares';
-import { useClaimPayout } from '@/hooks/useClaimPayout';
+import { useFinalDistributionShare, useUnclaimedInfo } from '@/hooks/useClaimPayout';
 import { useClosePoolAndRequestVRF, useSubmitScore } from '@/hooks/useOperatorActions';
 import { useVRFStatus, formatTimeRemaining } from '@/hooks/useVRFStatus';
 
@@ -76,15 +75,71 @@ export default function PoolPage() {
   const { score: q3Score } = usePoolScore(poolAddress, Quarter.Q3);
   const { score: finalScore } = usePoolScore(poolAddress, Quarter.FINAL);
 
-  // Winners
-  const { winner: q1Winner, payout: q1Payout } = usePoolWinner(poolAddress, Quarter.Q1);
-  const { winner: q2Winner, payout: q2Payout } = usePoolWinner(poolAddress, Quarter.Q2);
-  const { winner: q3Winner, payout: q3Payout } = usePoolWinner(poolAddress, Quarter.Q3);
-  const { winner: finalWinner, payout: finalPayout } = usePoolWinner(poolAddress, Quarter.FINAL);
+  // Winners (base payouts from contract view function)
+  const { winner: q1Winner, payout: q1BasePayout } = usePoolWinner(poolAddress, Quarter.Q1);
+  const { winner: q2Winner, payout: q2BasePayout } = usePoolWinner(poolAddress, Quarter.Q2);
+  const { winner: q3Winner, payout: q3BasePayout } = usePoolWinner(poolAddress, Quarter.Q3);
+  const { winner: finalWinner, payout: finalBasePayout } = usePoolWinner(poolAddress, Quarter.FINAL);
+
+  // Helper to check if address is a real winner (not zero address)
+  const isRealWinner = (addr: `0x${string}` | undefined) =>
+    addr && addr !== '0x0000000000000000000000000000000000000000';
+
+  // Calculate actual payouts with roll-forward logic
+  // If a quarter has no winner, its payout rolls to the next quarter's winner
+  const calculatePayouts = () => {
+    const zero = BigInt(0);
+    let accumulated = zero;
+
+    // Q1
+    const q1HasWinner = isRealWinner(q1Winner);
+    let q1Actual = q1BasePayout ?? zero;
+    if (q1HasWinner) {
+      q1Actual = (q1BasePayout ?? zero) + accumulated;
+      accumulated = zero;
+    } else if (q1Score?.settled) {
+      accumulated += q1BasePayout ?? zero;
+    }
+
+    // Q2 (Halftime)
+    const q2HasWinner = isRealWinner(q2Winner);
+    let q2Actual = q2BasePayout ?? zero;
+    if (q2HasWinner) {
+      q2Actual = (q2BasePayout ?? zero) + accumulated;
+      accumulated = zero;
+    } else if (q2Score?.settled) {
+      accumulated += q2BasePayout ?? zero;
+    }
+
+    // Q3
+    const q3HasWinner = isRealWinner(q3Winner);
+    let q3Actual = q3BasePayout ?? zero;
+    if (q3HasWinner) {
+      q3Actual = (q3BasePayout ?? zero) + accumulated;
+      accumulated = zero;
+    } else if (q3Score?.settled) {
+      accumulated += q3BasePayout ?? zero;
+    }
+
+    // Final
+    const finalHasWinner = isRealWinner(finalWinner);
+    let finalActual = finalBasePayout ?? zero;
+    if (finalHasWinner) {
+      finalActual = (finalBasePayout ?? zero) + accumulated;
+    } else if (finalScore?.settled) {
+      // No winner at Final - distributed to all square holders
+      finalActual = (finalBasePayout ?? zero) + accumulated;
+    }
+
+    return { q1Actual, q2Actual, q3Actual, finalActual };
+  };
+
+  const { q1Actual: q1Payout, q2Actual: q2Payout, q3Actual: q3Payout, finalActual: finalPayout } = calculatePayouts();
 
   // State
   const [selectedSquares, setSelectedSquares] = useState<number[]>([]);
   const [poolPassword, setPoolPassword] = useState('');
+  const [randomCount, setRandomCount] = useState('');
   const [showPoolPassword, setShowPoolPassword] = useState(false);
 
   // Success toast state
@@ -166,11 +221,9 @@ export default function PoolPage() {
     reset: resetPurchase,
   } = useBuySquares(poolAddress, poolInfo?.paymentToken);
 
-  const {
-    claimPayout,
-    isPending: isClaiming,
-    isConfirming: isConfirmingClaim,
-  } = useClaimPayout(poolAddress);
+  // Final distribution hooks (auto-distributed when Final has no winner)
+  const { share: distributionShare, claimed: distributionClaimed, refetch: refetchDistributionShare } = useFinalDistributionShare(poolAddress, address);
+  const { rolledAmount, distributionPool, distributionReady, refetch: refetchUnclaimedInfo } = useUnclaimedInfo(poolAddress);
 
   // Reset purchase state on mount to clear any stale wagmi transaction cache
   useEffect(() => {
@@ -225,11 +278,12 @@ export default function PoolPage() {
   useEffect(() => {
     if (isSubmitScoreSuccess) {
       refetchInfo();
+      refetchUnclaimedInfo();
       resetSubmitScore();
       setDevScoreA('');
       setDevScoreB('');
     }
-  }, [isSubmitScoreSuccess, refetchInfo, resetSubmitScore]);
+  }, [isSubmitScoreSuccess, refetchInfo, refetchUnclaimedInfo, resetSubmitScore]);
 
   // Format token amount for display
   const formatAmount = (amount: bigint) => {
@@ -246,9 +300,76 @@ export default function PoolPage() {
     ? maxSquares - squareCount
     : undefined;
 
+  // Get available (unsold) squares
+  const availableSquares = useMemo(() => {
+    if (!grid) return [];
+    const available: number[] = [];
+    for (let i = 0; i < grid.length; i++) {
+      if (!grid[i] || grid[i] === '0x0000000000000000000000000000000000000000') {
+        available.push(i);
+      }
+    }
+    return available;
+  }, [grid]);
+
+  // Calculate max squares user can select (limited by remaining allowance and available squares)
+  const maxSelectableSquares = useMemo(() => {
+    const availableCount = availableSquares.length;
+    if (remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0) {
+      return Math.min(remainingSquares, availableCount);
+    }
+    return availableCount;
+  }, [availableSquares.length, remainingSquares, maxSquares]);
+
+  // Handle random square selection
+  const handleRandomSelect = () => {
+    const count = parseInt(randomCount);
+    if (isNaN(count) || count <= 0) return;
+
+    // Get squares that are available and not already selected
+    const unselectedAvailable = availableSquares.filter(pos => !selectedSquares.includes(pos));
+
+    // Limit to what user can actually select
+    const maxToSelect = remainingSquares !== undefined && maxSquares !== undefined && maxSquares > 0
+      ? Math.min(count, remainingSquares - selectedSquares.length, unselectedAvailable.length)
+      : Math.min(count, unselectedAvailable.length);
+
+    if (maxToSelect <= 0) return;
+
+    // Fisher-Yates shuffle and take first N
+    const shuffled = [...unselectedAvailable];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const randomPicks = shuffled.slice(0, maxToSelect);
+    setSelectedSquares(prev => [...prev, ...randomPicks]);
+    setRandomCount('');
+  };
+
   const totalCost = poolInfo
     ? poolInfo.squarePrice * BigInt(selectedSquares.length)
     : BigInt(0);
+
+  // Calculate user's numbers based on their squares and assigned row/col numbers
+  const userNumbers = useMemo(() => {
+    if (!grid || !rowNumbers || !colNumbers || !address) return [];
+
+    const numbers: { row: number; col: number; position: number }[] = [];
+    for (let i = 0; i < grid.length; i++) {
+      if (grid[i]?.toLowerCase() === address.toLowerCase()) {
+        const row = Math.floor(i / 10);
+        const col = i % 10;
+        numbers.push({
+          row: rowNumbers[row],
+          col: colNumbers[col],
+          position: i,
+        });
+      }
+    }
+    return numbers;
+  }, [grid, rowNumbers, colNumbers, address]);
 
   // Handle square selection
   const handleSquareSelect = (position: number) => {
@@ -597,6 +718,52 @@ export default function PoolPage() {
                         </div>
                       )}
 
+                      {/* Quick Pick Section */}
+                      <div className="mb-6 p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/30">
+                        <div className="flex items-center gap-3 mb-3">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                            <path d="M19.5 12c0 4.14-3.36 7.5-7.5 7.5S4.5 16.14 4.5 12 7.86 4.5 12 4.5s7.5 3.36 7.5 7.5z" stroke="currentColor" strokeWidth="2"/>
+                            <path d="M12 8v4l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <path d="M3 3l3 3M21 3l-3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          </svg>
+                          <span className="text-sm font-medium text-[var(--chrome)]">Quick Pick</span>
+                          <span className="text-xs text-[var(--smoke)]">({availableSquares.length} available)</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxSelectableSquares - selectedSquares.length}
+                            value={randomCount}
+                            onChange={(e) => setRandomCount(e.target.value)}
+                            placeholder="# of squares"
+                            className="flex-1 px-4 py-2 rounded-lg bg-[var(--midnight)] border border-[var(--steel)]/50 text-[var(--chrome)] placeholder:text-[var(--steel)] focus:outline-none focus:border-[var(--turf-green)] text-center"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleRandomSelect}
+                            disabled={!randomCount || parseInt(randomCount) <= 0 || availableSquares.length === 0}
+                            className="px-4 py-2 rounded-lg bg-[var(--championship-gold)]/20 border border-[var(--championship-gold)]/40 text-[var(--championship-gold)] font-medium text-sm hover:bg-[var(--championship-gold)]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            Random Select
+                          </button>
+                          {selectedSquares.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSquares([])}
+                              className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm hover:bg-red-500/20 transition-colors"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        {maxSquares !== undefined && maxSquares > 0 && (
+                          <p className="text-xs text-[var(--smoke)] mt-2">
+                            Max {maxSelectableSquares - selectedSquares.length} more squares
+                          </p>
+                        )}
+                      </div>
+
                       <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="flex items-center gap-6">
                           <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[var(--turf-green)]/20 to-[var(--turf-green)]/5 border border-[var(--turf-green)]/30 flex items-center justify-center">
@@ -685,6 +852,54 @@ export default function PoolPage() {
               </div>
             )}
 
+            {/* Your Numbers Display */}
+            {poolInfo.state >= PoolState.NUMBERS_ASSIGNED && userNumbers.length > 0 && (
+              <div className="card p-6 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--championship-gold)]/5 to-transparent" />
+                <div className="relative">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-[var(--championship-gold)]/20 border border-[var(--championship-gold)]/30 flex items-center justify-center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                        <path d="M4 4h4v4H4zM4 10h4v4H4zM4 16h4v4H4zM10 4h4v4h-4zM10 10h4v4h-4zM10 16h4v4h-4zM16 4h4v4h-4zM16 10h4v4h-4zM16 16h4v4h-4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
+                        YOUR NUMBERS
+                      </h2>
+                      <p className="text-sm text-[var(--smoke)]">
+                        You win if the last digit of each score matches
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {userNumbers.map(({ row, col, position }) => (
+                      <div
+                        key={position}
+                        className="px-4 py-3 rounded-xl bg-gradient-to-r from-[var(--championship-gold)]/20 to-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-center">
+                            <p className="text-xs text-[var(--smoke)] mb-1">{poolInfo.teamAName}</p>
+                            <p className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+                              {row}
+                            </p>
+                          </div>
+                          <span className="text-[var(--smoke)] text-lg">-</span>
+                          <div className="text-center">
+                            <p className="text-xs text-[var(--smoke)] mb-1">{poolInfo.teamBName}</p>
+                            <p className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+                              {col}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Scores Display */}
             {poolInfo.state >= PoolState.NUMBERS_ASSIGNED && (
               <ScoreDisplay
@@ -703,6 +918,7 @@ export default function PoolPage() {
                   [Quarter.FINAL]: finalWinner && finalPayout ? { address: finalWinner, payout: finalPayout } : undefined,
                 }}
                 token={paymentToken}
+                currentUserAddress={address}
               />
             )}
           </div>
@@ -865,38 +1081,9 @@ export default function PoolPage() {
               />
             )}
 
-            {/* Score Fetcher - shows when game is in progress */}
-            {poolInfo.state >= PoolState.NUMBERS_ASSIGNED && poolInfo.state < PoolState.FINAL_SCORED && (
-              <ScoreFetcher
-                poolAddress={poolAddress}
-                poolState={poolInfo.state}
-                currentScores={{
-                  [Quarter.Q1]: q1Score ? {
-                    teamAScore: q1Score.teamAScore,
-                    teamBScore: q1Score.teamBScore,
-                    settled: q1Score.settled,
-                  } : undefined,
-                  [Quarter.Q2]: q2Score ? {
-                    teamAScore: q2Score.teamAScore,
-                    teamBScore: q2Score.teamBScore,
-                    settled: q2Score.settled,
-                  } : undefined,
-                  [Quarter.Q3]: q3Score ? {
-                    teamAScore: q3Score.teamAScore,
-                    teamBScore: q3Score.teamBScore,
-                    settled: q3Score.settled,
-                  } : undefined,
-                  [Quarter.FINAL]: finalScore ? {
-                    teamAScore: finalScore.teamAScore,
-                    teamBScore: finalScore.teamBScore,
-                    settled: finalScore.settled,
-                  } : undefined,
-                }}
-              />
-            )}
 
-            {/* Claim Payouts */}
-            {isConnected && poolInfo.state >= PoolState.Q1_SCORED && (
+            {/* Payout Status */}
+            {poolInfo.state >= PoolState.Q1_SCORED && (
               <div className="card p-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-lg bg-[var(--championship-gold)]/20 border border-[var(--championship-gold)]/30 flex items-center justify-center">
@@ -905,50 +1092,98 @@ export default function PoolPage() {
                     </svg>
                   </div>
                   <h2 className="text-xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    CLAIM WINNINGS
+                    PAYOUTS
                   </h2>
                 </div>
 
                 <div className="space-y-3">
                   {[
-                    { quarter: Quarter.Q1, winner: q1Winner, minState: PoolState.Q1_SCORED, color: 'var(--turf-green)' },
-                    { quarter: Quarter.Q2, winner: q2Winner, minState: PoolState.Q2_SCORED, color: 'var(--grass-light)' },
-                    { quarter: Quarter.Q3, winner: q3Winner, minState: PoolState.Q3_SCORED, color: 'var(--electric-lime)' },
-                    { quarter: Quarter.FINAL, winner: finalWinner, minState: PoolState.FINAL_SCORED, color: 'var(--championship-gold)' },
-                  ].map(({ quarter, winner, minState, color }) => {
-                    const isWinner = winner?.toLowerCase() === address?.toLowerCase();
-                    const canClaim = poolInfo.state >= minState && isWinner;
+                    { quarter: Quarter.Q1, winner: q1Winner, payout: q1Payout, minState: PoolState.Q1_SCORED, color: 'var(--turf-green)' },
+                    { quarter: Quarter.Q2, winner: q2Winner, payout: q2Payout, minState: PoolState.Q2_SCORED, color: 'var(--grass-light)' },
+                    { quarter: Quarter.Q3, winner: q3Winner, payout: q3Payout, minState: PoolState.Q3_SCORED, color: 'var(--electric-lime)' },
+                    { quarter: Quarter.FINAL, winner: finalWinner, payout: finalPayout, minState: PoolState.FINAL_SCORED, color: 'var(--championship-gold)' },
+                  ].map(({ quarter, winner, payout, minState, color }) => {
+                    const isScored = poolInfo.state >= minState;
+                    const hasWinner = winner && winner !== '0x0000000000000000000000000000000000000000';
+                    const isYou = winner?.toLowerCase() === address?.toLowerCase();
+
+                    if (!isScored) return null;
 
                     return (
-                      <button
+                      <div
                         key={quarter}
-                        onClick={() => claimPayout(quarter)}
-                        disabled={!canClaim || isClaiming || isConfirmingClaim}
-                        className={`w-full py-3 px-4 rounded-xl text-sm font-medium transition-all ${
-                          canClaim
-                            ? 'bg-gradient-to-r from-[var(--turf-green)] to-[var(--grass-dark)] text-[var(--midnight)] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
-                            : 'bg-[var(--steel)]/30 text-[var(--smoke)] cursor-not-allowed'
-                        }`}
+                        className="w-full py-3 px-4 rounded-xl bg-[var(--steel)]/20 border border-[var(--steel)]/30"
                       >
-                        <span className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                           <span className="flex items-center gap-2">
                             <span
-                              className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold"
+                              className="w-8 h-6 rounded-md flex items-center justify-center text-[10px] font-bold"
                               style={{ backgroundColor: `${color}20`, color }}
                             >
                               {QUARTER_LABELS[quarter]}
                             </span>
-                            {isWinner ? 'Claim Winnings' : 'Not Winner'}
+                            {hasWinner ? (
+                              <span className="text-sm">
+                                <span className="text-[var(--smoke)]">Paid to </span>
+                                <span className={isYou ? 'text-[var(--turf-green)] font-medium' : 'text-[var(--championship-gold)] font-medium'}>
+                                  {isYou ? 'You' : `${winner?.slice(0, 6)}...${winner?.slice(-4)}`}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-sm text-[var(--smoke)]">No winner (rolled forward)</span>
+                            )}
                           </span>
-                          {isWinner && (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
+                          {hasWinner && payout && (
+                            <span className="text-sm font-medium text-white">
+                              {formatAmount(payout)} {paymentToken.symbol}
+                            </span>
                           )}
-                        </span>
-                      </button>
+                        </div>
+                      </div>
                     );
                   })}
+
+                  {/* Final Distribution - shown when Final had no winner and funds were auto-distributed */}
+                  {distributionReady && distributionShare && distributionShare > BigInt(0) && distributionClaimed && (
+                    <div className="mt-4 pt-4 border-t border-[var(--steel)]/20">
+                      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-purple-500/5 border border-purple-500/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-purple-400">
+                            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span className="text-sm font-medium text-purple-300">Pool Distribution Complete</span>
+                        </div>
+                        <p className="text-xs text-[var(--smoke)] mb-2">
+                          No winner for Final quarter. All funds were automatically distributed equally per square.
+                        </p>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-[var(--smoke)]">Your Share (Received)</span>
+                          <span className="text-lg font-bold text-purple-400">
+                            {formatAmount(distributionShare)} {paymentToken.symbol}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show rolled amount info if any quarters have no winner */}
+                  {rolledAmount && rolledAmount > BigInt(0) && poolInfo.state < PoolState.FINAL_SCORED && (
+                    <div className="mt-4 pt-4 border-t border-[var(--steel)]/20">
+                      <div className="p-3 rounded-lg bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30">
+                        <div className="flex items-center gap-2 text-sm text-[var(--championship-gold)]">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span className="font-medium">
+                            {formatAmount(rolledAmount)} {paymentToken.symbol} rolling to next quarter
+                          </span>
+                        </div>
+                        <p className="text-xs text-[var(--smoke)] mt-1">
+                          Unclaimed winnings roll forward to the next winner
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1450,13 +1685,15 @@ export default function PoolPage() {
                 <div className="space-y-2 p-3 rounded-lg bg-[var(--steel)]/10 border border-[var(--steel)]/20">
                   {[
                     { quarter: Quarter.Q1, label: 'Q1', score: q1Score, winner: q1Winner, payout: q1Payout, minState: PoolState.Q1_SCORED },
-                    { quarter: Quarter.Q2, label: 'Q2', score: q2Score, winner: q2Winner, payout: q2Payout, minState: PoolState.Q2_SCORED },
+                    { quarter: Quarter.Q2, label: 'Halftime', score: q2Score, winner: q2Winner, payout: q2Payout, minState: PoolState.Q2_SCORED },
                     { quarter: Quarter.Q3, label: 'Q3', score: q3Score, winner: q3Winner, payout: q3Payout, minState: PoolState.Q3_SCORED },
                     { quarter: Quarter.FINAL, label: 'Final', score: finalScore, winner: finalWinner, payout: finalPayout, minState: PoolState.FINAL_SCORED },
-                  ].map(({ label, score, winner, payout, minState }) => {
+                  ].map(({ quarter, label, score, winner, payout, minState }) => {
                     if (poolInfo.state < minState) return null;
                     const winningRow = score ? score.teamAScore % 10 : null;
                     const winningCol = score ? score.teamBScore % 10 : null;
+                    const hasWinner = winner && winner !== '0x0000000000000000000000000000000000000000';
+                    const isFinal = quarter === Quarter.FINAL;
                     return (
                       <div key={label} className="text-xs border-b border-[var(--steel)]/10 pb-2 last:border-0 last:pb-0">
                         <div className="flex justify-between mb-1">
@@ -1472,10 +1709,20 @@ export default function PoolPage() {
                             Position: ({winningRow}, {winningCol})
                           </div>
                         )}
-                        {winner && winner !== '0x0000000000000000000000000000000000000000' && (
+                        {hasWinner ? (
                           <div className="text-[var(--turf-green)] font-mono text-[10px]">
                             {winner.slice(0, 6)}...{winner.slice(-4)}
                             {payout && ` (${formatAmount(payout)} ${paymentToken.symbol})`}
+                          </div>
+                        ) : score?.submitted && (
+                          <div className="text-[var(--championship-gold)] text-[10px]">
+                            {isFinal ? (
+                              distributionReady ? 'No winner - distributed to all' : 'No winner'
+                            ) : (
+                              <>
+                                No winner - {payout ? `${formatAmount(payout)} ${paymentToken.symbol}` : 'funds'} rolled forward
+                              </>
+                            )}
                           </div>
                         )}
                       </div>

@@ -18,7 +18,7 @@ export const SquaresPoolABI = [
     stateMutability: 'nonpayable',
   },
 
-  // VRF/Automation functions
+  // VRF functions
   {
     type: 'function',
     name: 'closePoolAndRequestVRF',
@@ -28,33 +28,27 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
-    name: 'checkUpkeep',
-    inputs: [{ name: 'checkData', type: 'bytes' }],
-    outputs: [
-      { name: 'upkeepNeeded', type: 'bool' },
-      { name: 'performData', type: 'bytes' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'performUpkeep',
-    inputs: [{ name: 'performData', type: 'bytes' }],
+    name: 'closePoolAndRequestVRFFromFactory',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
   },
 
-  // Score functions (Chainlink Functions)
+  // Score functions
   {
     type: 'function',
-    name: 'fetchScore',
-    inputs: [{ name: 'quarter', type: 'uint8' }],
-    outputs: [{ name: 'requestId', type: 'bytes32' }],
+    name: 'submitScore',
+    inputs: [
+      { name: 'quarter', type: 'uint8' },
+      { name: 'teamAScore', type: 'uint8' },
+      { name: 'teamBScore', type: 'uint8' },
+    ],
+    outputs: [],
     stateMutability: 'nonpayable',
   },
   {
     type: 'function',
-    name: 'submitScore',
+    name: 'submitScoreFromFactory',
     inputs: [
       { name: 'quarter', type: 'uint8' },
       { name: 'teamAScore', type: 'uint8' },
@@ -147,6 +141,27 @@ export const SquaresPoolABI = [
   },
   {
     type: 'function',
+    name: 'getFinalDistributionShare',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [
+      { name: 'share', type: 'uint256' },
+      { name: 'claimed', type: 'bool' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getUnclaimedInfo',
+    inputs: [],
+    outputs: [
+      { name: 'rolledAmount', type: 'uint256' },
+      { name: 'distributionPool', type: 'uint256' },
+      { name: 'distributionReady', type: 'bool' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'hasClaimed',
     inputs: [
       { name: 'user', type: 'address' },
@@ -158,6 +173,13 @@ export const SquaresPoolABI = [
   {
     type: 'function',
     name: 'operator',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'factory',
     inputs: [],
     outputs: [{ type: 'address' }],
     stateMutability: 'view',
@@ -291,20 +313,28 @@ export const SquaresPoolABI = [
   },
   {
     type: 'event',
-    name: 'ScoreFetchRequested',
+    name: 'UnclaimedWinningsRolled',
     inputs: [
       { name: 'quarter', type: 'uint8', indexed: true },
-      { name: 'requestId', type: 'bytes32', indexed: false },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'newTotalRolled', type: 'uint256', indexed: false },
     ],
   },
   {
     type: 'event',
-    name: 'ScoreVerified',
+    name: 'FinalDistributionCalculated',
     inputs: [
-      { name: 'quarter', type: 'uint8', indexed: true },
-      { name: 'teamAScore', type: 'uint8', indexed: false },
-      { name: 'teamBScore', type: 'uint8', indexed: false },
-      { name: 'verified', type: 'bool', indexed: false },
+      { name: 'totalAmount', type: 'uint256', indexed: false },
+      { name: 'squaresSold', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'FinalDistributionClaimed',
+    inputs: [
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'squaresOwned', type: 'uint256', indexed: false },
     ],
   },
 ] as const;

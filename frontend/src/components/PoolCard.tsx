@@ -11,9 +11,10 @@ import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config
 interface PoolCardProps {
   address: `0x${string}`;
   showOperatorBadge?: boolean;
+  squareCount?: number;
 }
 
-export function PoolCard({ address, showOperatorBadge }: PoolCardProps) {
+export function PoolCard({ address, showOperatorBadge, squareCount }: PoolCardProps) {
   const { poolInfo, isLoading, error } = usePoolInfo(address);
   const chainId = useChainId();
 
@@ -113,6 +114,17 @@ export function PoolCard({ address, showOperatorBadge }: PoolCardProps) {
                     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor" />
                   </svg>
                   OPERATOR
+                </span>
+              )}
+              {squareCount !== undefined && squareCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--turf-green)]/20 text-[var(--turf-green)] border border-[var(--turf-green)]/30">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                    <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                    <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                    <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                  {squareCount} {squareCount === 1 ? 'SQUARE' : 'SQUARES'}
                 </span>
               )}
             </div>

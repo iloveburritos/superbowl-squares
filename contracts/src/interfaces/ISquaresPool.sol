@@ -30,7 +30,7 @@ interface ISquaresPool {
         string teamAName;
         string teamBName;
         uint256 purchaseDeadline;
-        uint256 vrfTriggerTime;     // When VRF should be triggered (renamed from revealDeadline)
+        uint256 vrfTriggerTime;     // When VRF should be triggered
         bytes32 passwordHash;       // keccak256(password) for private pools, bytes32(0) for public
     }
 
@@ -39,7 +39,7 @@ interface ISquaresPool {
         uint8 teamBScore;
         bool submitted;
         bool settled;
-        bytes32 requestId;  // Chainlink Functions request ID
+        bytes32 requestId;  // Reserved for compatibility
     }
 
     // Events
@@ -47,22 +47,24 @@ interface ISquaresPool {
     event PoolClosed(uint256 timestamp);
     event VRFRequested(uint256 requestId);
     event NumbersAssigned(uint8[10] rowNumbers, uint8[10] colNumbers);
-    event ScoreFetchRequested(Quarter indexed quarter, bytes32 requestId);
-    event ScoreVerified(Quarter indexed quarter, uint8 teamAScore, uint8 teamBScore, bool verified);
     event ScoreSubmitted(Quarter indexed quarter, uint8 teamAScore, uint8 teamBScore, bytes32 requestId);
     event ScoreSettled(Quarter indexed quarter, address winner, uint256 payout);
     event PayoutClaimed(address indexed winner, Quarter indexed quarter, uint256 amount);
+    event UnclaimedWinningsRolled(Quarter indexed quarter, uint256 amount, uint256 newTotalRolled);
+    event FinalDistributionCalculated(uint256 totalAmount, uint256 squaresSold);
+    event FinalDistributionClaimed(address indexed user, uint256 amount, uint256 squaresOwned);
 
     // Player functions
     function buySquares(uint8[] calldata positions, string calldata password) external payable;
     function claimPayout(Quarter quarter) external;
 
-    // VRF/Automation functions
+    // VRF functions
     function closePoolAndRequestVRF() external;
+    function closePoolAndRequestVRFFromFactory() external;
 
-    // Score functions (Chainlink Functions)
-    function fetchScore(Quarter quarter) external returns (bytes32 requestId);
+    // Score functions
     function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external;
+    function submitScoreFromFactory(uint8 quarter, uint8 teamAScore, uint8 teamBScore) external;
 
     // View functions
     function getGrid() external view returns (address[100] memory);
@@ -84,5 +86,11 @@ interface ISquaresPool {
         bool vrfRequested,
         uint256 vrfRequestId,
         bool numbersAssigned
+    );
+    function getFinalDistributionShare(address user) external view returns (uint256 share, bool claimed);
+    function getUnclaimedInfo() external view returns (
+        uint256 rolledAmount,
+        uint256 distributionPool,
+        bool distributionReady
     );
 }

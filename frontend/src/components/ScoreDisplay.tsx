@@ -20,9 +20,10 @@ interface ScoreDisplayProps {
     [Quarter.FINAL]?: { address: `0x${string}`; payout: bigint };
   };
   token?: Token;
+  currentUserAddress?: `0x${string}`;
 }
 
-export function ScoreDisplay({ teamAName, teamBName, scores, winners, token }: ScoreDisplayProps) {
+export function ScoreDisplay({ teamAName, teamBName, scores, winners, token, currentUserAddress }: ScoreDisplayProps) {
   const quarters = [Quarter.Q1, Quarter.Q2, Quarter.Q3, Quarter.FINAL];
 
   const tokenSymbol = token?.symbol || 'ETH';
@@ -35,6 +36,10 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners, token }: S
 
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const isCurrentUser = (addr: string) => {
+    return currentUserAddress && addr.toLowerCase() === currentUserAddress.toLowerCase();
   };
 
   const getQuarterColor = (quarter: Quarter) => {
@@ -145,11 +150,23 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners, token }: S
                   <div className="text-right min-w-[140px]">
                     {winner?.address && winner.address !== '0x0000000000000000000000000000000000000000' ? (
                       <div>
-                        <p className="text-sm text-[var(--turf-green)] font-medium">
-                          {truncateAddress(winner.address)}
+                        <p className={`text-sm font-medium ${isCurrentUser(winner.address) ? 'text-[var(--turf-green)]' : 'text-[var(--championship-gold)]'}`}>
+                          {isCurrentUser(winner.address) ? 'You' : truncateAddress(winner.address)}
                         </p>
                         <p className="text-xs text-[var(--smoke)]">
                           Won {formatAmount(winner.payout)} {tokenSymbol}
+                        </p>
+                      </div>
+                    ) : score?.submitted && isSettled ? (
+                      <div>
+                        <p className="text-sm text-[var(--championship-gold)] font-medium">
+                          No winner
+                        </p>
+                        <p className="text-xs text-[var(--smoke)]">
+                          {quarter === Quarter.FINAL
+                            ? 'Distributed to all'
+                            : `${winner?.payout ? formatAmount(winner.payout) : 'Funds'} ${winner?.payout ? tokenSymbol + ' ' : ''}rolled forward`
+                          }
                         </p>
                       </div>
                     ) : score?.submitted && !isSettled ? (
@@ -167,21 +184,6 @@ export function ScoreDisplay({ teamAName, teamBName, scores, winners, token }: S
           })}
         </div>
 
-        {/* Status legend */}
-        <div className="flex justify-center gap-6 mt-6 pt-6 border-t border-[var(--steel)]/30">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[var(--turf-green)]" />
-            <span className="text-xs text-[var(--smoke)]">Settled</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-yellow-400" />
-            <span className="text-xs text-[var(--smoke)]">Pending Dispute</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[var(--steel)]" />
-            <span className="text-xs text-[var(--smoke)]">Not Submitted</span>
-          </div>
-        </div>
       </div>
     </div>
   );

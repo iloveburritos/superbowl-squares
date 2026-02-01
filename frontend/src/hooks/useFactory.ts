@@ -1,7 +1,8 @@
 'use client';
 
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { SquaresFactoryABI, getFactoryAddress, type PoolParams } from '@/lib/contracts';
+import { SquaresPoolABI } from '@/lib/abis/SquaresPool';
 import { useChainId } from 'wagmi';
 import { decodeEventLog } from 'viem';
 
@@ -56,6 +57,43 @@ export function usePoolsByCreator(creator: `0x${string}` | undefined) {
   };
 }
 
+export function usePoolsParticipating(userAddress: `0x${string}` | undefined) {
+  // 1. Get all pool addresses
+  const { pools: allPools, isLoading: poolsLoading } = useAllPools(0, 1000);
+
+  // 2. Batch check userSquareCount for each pool using useReadContracts (multicall)
+  const contracts = (allPools ?? []).map((pool) => ({
+    address: pool,
+    abi: SquaresPoolABI,
+    functionName: 'userSquareCount' as const,
+    args: [userAddress] as readonly [`0x${string}`],
+  }));
+
+  const { data: squareCounts, isLoading: countsLoading } = useReadContracts({
+    contracts,
+    query: {
+      enabled: !!userAddress && !!allPools?.length,
+    },
+  });
+
+  // 3. Filter to pools where user owns squares (count > 0) and include the count
+  const participatingPools = allPools?.reduce<{ address: `0x${string}`; squareCount: number }[]>(
+    (acc, pool, i) => {
+      const result = squareCounts?.[i];
+      if (result?.status === 'success' && result.result && Number(result.result) > 0) {
+        acc.push({ address: pool, squareCount: Number(result.result) });
+      }
+      return acc;
+    },
+    []
+  );
+
+  return {
+    pools: participatingPools,
+    isLoading: poolsLoading || countsLoading,
+  };
+}
+
 export function usePoolCount() {
   const factoryAddress = useFactoryAddress();
 
@@ -72,6 +110,39 @@ export function usePoolCount() {
     count: data as bigint | undefined,
     isLoading,
     error,
+  };
+}
+
+export function usePoolCreationCost() {
+  const factoryAddress = useFactoryAddress();
+
+  const { data: creationFee, isLoading: isLoadingFee } = useReadContract({
+    address: factoryAddress,
+    abi: SquaresFactoryABI,
+    functionName: 'creationFee',
+    query: {
+      enabled: !!factoryAddress,
+    },
+  });
+
+  const { data: vrfFundingAmount, isLoading: isLoadingVrf } = useReadContract({
+    address: factoryAddress,
+    abi: SquaresFactoryABI,
+    functionName: 'vrfFundingAmount',
+    query: {
+      enabled: !!factoryAddress,
+    },
+  });
+
+  const totalCost = creationFee !== undefined && vrfFundingAmount !== undefined
+    ? (creationFee as bigint) + (vrfFundingAmount as bigint)
+    : undefined;
+
+  return {
+    creationFee: creationFee as bigint | undefined,
+    vrfFundingAmount: vrfFundingAmount as bigint | undefined,
+    totalCost,
+    isLoading: isLoadingFee || isLoadingVrf,
   };
 }
 
@@ -99,7 +170,7 @@ export function useCreatePool() {
     confirmations: 1,
   });
 
-  const createPool = async (params: PoolParams) => {
+  const createPool = async (params: PoolParams, value?: bigint) => {
     if (!factoryAddress || !isFactoryConfigured) {
       console.error('Factory contract not configured for this chain');
       return;
@@ -110,6 +181,8 @@ export function useCreatePool() {
       abi: SquaresFactoryABI,
       functionName: 'createPool',
       args: [params],
+      value: value || BigInt(0),
+      gas: BigInt(5000000), // Manual gas limit to avoid estimation issues
     });
   };
 

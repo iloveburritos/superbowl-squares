@@ -1,8 +1,9 @@
 'use client';
 
 import { useReadContract, useReadContracts } from 'wagmi';
+import { usePublicClient } from 'wagmi';
+import { useEffect, useState } from 'react';
 import { SquaresPoolABI, PoolState, Quarter, type PoolInfo, type Score } from '@/lib/contracts';
-
 export function usePoolInfo(poolAddress: `0x${string}` | undefined) {
   const { data, isLoading, error, refetch } = useReadContract({
     address: poolAddress,

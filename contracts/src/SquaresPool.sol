@@ -3,19 +3,13 @@ pragma solidity ^0.8.24;
 
 import {ISquaresPool} from "./interfaces/ISquaresPool.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
-import {IFunctionsRouter, IFunctionsClient, FunctionsRequest, FunctionsRequestLib} from "./interfaces/IFunctionsClient.sol";
 import {IVRFCoordinatorV2Plus, VRFConsumerBaseV2Plus, VRFV2PlusClient} from "./interfaces/IVRFCoordinatorV2Plus.sol";
-import {AutomationCompatibleInterface} from "./interfaces/IAutomationCompatible.sol";
 import {SquaresLib} from "./libraries/SquaresLib.sol";
 
 /// @title SquaresPool
-/// @notice Super Bowl Squares with Chainlink VRF + Automation for randomness + Chainlink Functions for score verification
-contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
-    using FunctionsRequestLib for FunctionsRequest;
-
+/// @notice Super Bowl Squares with Chainlink VRF for randomness and admin score submission
+contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus {
     // ============ Constants ============
-    uint32 private constant FUNCTIONS_CALLBACK_GAS_LIMIT = 300000;
-    uint16 private constant FUNCTIONS_DATA_VERSION = 1;
     uint16 private constant VRF_REQUEST_CONFIRMATIONS = 3;
     uint32 private constant VRF_NUM_WORDS = 1;
     uint32 private constant VRF_CALLBACK_GAS_LIMIT = 500000;
@@ -23,7 +17,6 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
     // ============ Immutables ============
     address public immutable factory;
     address public immutable operator;
-    IFunctionsRouter public immutable functionsRouter;
 
     // ============ Pool Configuration ============
     string public name;
@@ -35,11 +28,6 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
     string public teamBName;
     uint256 public purchaseDeadline;
     uint256 public vrfTriggerTime;
-
-    // Chainlink Functions Configuration
-    uint64 public functionsSubscriptionId;
-    bytes32 public functionsDonId;
-    string public functionsSource; // JavaScript source code
 
     // Chainlink VRF Configuration
     uint256 public vrfSubscriptionId;
@@ -61,11 +49,16 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
 
     // Score tracking
     mapping(Quarter => Score) public scores;
-    mapping(bytes32 => Quarter) public requestIdToQuarter;
 
     // User tracking
     mapping(address => uint8) public userSquareCount;
     mapping(address => mapping(Quarter => bool)) public payoutClaimed;
+
+    // Unclaimed winnings tracking
+    uint256 public unclaimedRolledAmount;
+    uint256 public finalDistributionPool;
+    bool public finalDistributionCalculated;
+    mapping(address => bool) public finalDistributionClaimed;
 
     // ============ Errors ============
     error InvalidState(PoolState current, PoolState required);
@@ -79,13 +72,10 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
     error VRFAlreadyRequested();
     error OnlyOperator();
     error OnlyFactory();
-    error OnlyFunctionsRouter();
     error PayoutAlreadyClaimed();
     error NotWinner();
     error ScoreNotSettled();
     error InvalidPayoutPercentages();
-    error ScoreAlreadyPending();
-    error ScoreVerificationFailed();
     error InvalidQuarterProgression();
     error InvalidPassword();
     error NoSquaresSold();
@@ -101,11 +91,6 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         _;
     }
 
-    modifier onlyFunctionsRouter() {
-        if (msg.sender != address(functionsRouter)) revert OnlyFunctionsRouter();
-        _;
-    }
-
     modifier inState(PoolState required) {
         if (state != required) revert InvalidState(state, required);
         _;
@@ -113,13 +98,11 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
 
     // ============ Constructor ============
     constructor(
-        address _functionsRouter,
         address _vrfCoordinator,
         address _operator
     ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         factory = msg.sender;
         operator = _operator;
-        functionsRouter = IFunctionsRouter(_functionsRouter);
         state = PoolState.OPEN;
     }
 
@@ -139,18 +122,6 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         purchaseDeadline = params.purchaseDeadline;
         vrfTriggerTime = params.vrfTriggerTime;
         passwordHash = params.passwordHash;
-    }
-
-    /// @notice Set Chainlink Functions configuration (called by factory or operator)
-    function setFunctionsConfig(
-        uint64 _subscriptionId,
-        bytes32 _donId,
-        string calldata _source
-    ) external {
-        if (msg.sender != factory && msg.sender != operator) revert OnlyOperator();
-        functionsSubscriptionId = _subscriptionId;
-        functionsDonId = _donId;
-        functionsSource = _source;
     }
 
     /// @notice Set Chainlink VRF configuration (called by factory)
@@ -174,13 +145,14 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
 
         uint256 totalCost = squarePrice * positions.length;
 
-        if (maxSquaresPerUser > 0) {
-            uint8 newCount = userSquareCount[msg.sender] + uint8(positions.length);
-            if (newCount > maxSquaresPerUser) {
-                revert MaxSquaresExceeded(msg.sender, userSquareCount[msg.sender], maxSquaresPerUser);
-            }
-            userSquareCount[msg.sender] = newCount;
+        // Always track user square count for final distribution
+        uint8 newCount = userSquareCount[msg.sender] + uint8(positions.length);
+
+        // Check max squares limit if set
+        if (maxSquaresPerUser > 0 && newCount > maxSquaresPerUser) {
+            revert MaxSquaresExceeded(msg.sender, userSquareCount[msg.sender], maxSquaresPerUser);
         }
+        userSquareCount[msg.sender] = newCount;
 
         if (paymentToken == address(0)) {
             if (msg.value < totalCost) revert InsufficientPayment(msg.value, totalCost);
@@ -230,34 +202,13 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         emit PayoutClaimed(msg.sender, quarter, payout);
     }
 
-    // ============ Chainlink Automation Functions ============
 
-    /// @notice Check if upkeep is needed (called by Chainlink Automation)
-    /// @dev Returns true when vrfTriggerTime is reached and pool has sales
-    function checkUpkeep(bytes calldata /* checkData */)
-        external
-        view
-        override
-        returns (bool upkeepNeeded, bytes memory performData)
-    {
-        upkeepNeeded = (
-            state == PoolState.OPEN &&
-            block.timestamp >= vrfTriggerTime &&
-            squaresSold > 0 &&
-            !vrfRequested
-        );
-        performData = "";
-    }
+    // ============ VRF Trigger Functions ============
 
-    /// @notice Perform the upkeep (called by Chainlink Automation)
-    /// @dev Closes pool and requests VRF randomness
-    function performUpkeep(bytes calldata /* performData */) external override {
-        // Re-validate conditions
-        if (state != PoolState.OPEN) revert InvalidState(state, PoolState.OPEN);
-        if (block.timestamp < vrfTriggerTime) revert VRFTriggerTimeNotReached();
+    /// @notice Close pool and request VRF (called by factory for batch trigger)
+    function closePoolAndRequestVRFFromFactory() external onlyFactory inState(PoolState.OPEN) {
         if (squaresSold == 0) revert NoSquaresSold();
         if (vrfRequested) revert VRFAlreadyRequested();
-
         _closeAndRequestVRF();
     }
 
@@ -313,47 +264,50 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         emit NumbersAssigned(rowNumbers, colNumbers);
     }
 
-    // ============ Score Fetching (Chainlink Functions) ============
+    // ============ Score Submission (Factory Only) ============
 
-    /// @notice Request score from multiple sources via Chainlink Functions
-    /// @param quarter The quarter to fetch scores for
-    /// @dev Anyone can call this after numbers are assigned
-    function fetchScore(Quarter quarter) external returns (bytes32 requestId) {
-        // Validate state progression
-        _validateQuarterProgression(quarter);
+    /// @notice Submit score from factory (admin score submission)
+    /// @param quarter The quarter to submit score for (0=Q1, 1=Q2, 2=Q3, 3=Final)
+    /// @param teamAScore Team A's score
+    /// @param teamBScore Team B's score
+    function submitScoreFromFactory(
+        uint8 quarter,
+        uint8 teamAScore,
+        uint8 teamBScore
+    ) external onlyFactory {
+        // Validate state - must have numbers assigned
+        if (state < PoolState.NUMBERS_ASSIGNED) revert InvalidState(state, PoolState.NUMBERS_ASSIGNED);
 
-        Score storage score = scores[quarter];
-        if (score.submitted) revert ScoreAlreadyPending();
+        // Validate quarter progression
+        if (quarter == 0 && state != PoolState.NUMBERS_ASSIGNED) revert InvalidQuarterProgression();
+        if (quarter == 1 && state != PoolState.Q1_SCORED) revert InvalidQuarterProgression();
+        if (quarter == 2 && state != PoolState.Q2_SCORED) revert InvalidQuarterProgression();
+        if (quarter == 3 && state != PoolState.Q3_SCORED) revert InvalidQuarterProgression();
 
-        // Build the request
-        string[] memory args = new string[](2);
-        args[0] = _quarterToString(quarter);
-        args[1] = "401547417"; // ESPN game ID for Super Bowl LX
+        Quarter q = Quarter(quarter);
 
-        FunctionsRequest memory req;
-        req.source = functionsSource;
-        req.args = args;
+        // Store score
+        scores[q] = Score({
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            submitted: true,
+            settled: true,
+            requestId: bytes32(0)
+        });
 
-        bytes memory requestData = req.encodeCBOR();
+        // Update state
+        if (quarter == 0) state = PoolState.Q1_SCORED;
+        else if (quarter == 1) state = PoolState.Q2_SCORED;
+        else if (quarter == 2) state = PoolState.Q3_SCORED;
+        else if (quarter == 3) state = PoolState.FINAL_SCORED;
 
-        // Send request to Chainlink Functions
-        requestId = functionsRouter.sendRequest(
-            functionsSubscriptionId,
-            requestData,
-            FUNCTIONS_DATA_VERSION,
-            FUNCTIONS_CALLBACK_GAS_LIMIT,
-            functionsDonId
-        );
+        // Auto-payout the winner
+        _settleQuarter(q);
 
-        score.submitted = true;
-        score.requestId = requestId;
-        requestIdToQuarter[requestId] = quarter;
-
-        emit ScoreFetchRequested(quarter, requestId);
-        return requestId;
+        emit ScoreSubmitted(q, teamAScore, teamBScore, bytes32(0));
     }
 
-    /// @notice Operator can manually submit scores (fallback if Chainlink Functions fails)
+    /// @notice Operator can manually submit scores (fallback)
     function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external {
         // Only operator can manually submit (fallback if APIs fail)
         if (msg.sender != operator) revert OnlyOperator();
@@ -367,51 +321,10 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
 
         _advanceState(quarter);
 
-        (address winner, uint256 payout) = getWinner(quarter);
+        // Auto-payout or roll forward unclaimed winnings
+        _settleQuarter(quarter);
+
         emit ScoreSubmitted(quarter, teamAScore, teamBScore, bytes32(0));
-        emit ScoreSettled(quarter, winner, payout);
-    }
-
-    // ============ Chainlink Functions Callback ============
-
-    function handleOracleFulfillment(
-        bytes32 requestId,
-        bytes memory response,
-        bytes memory err
-    ) external onlyFunctionsRouter {
-        Quarter quarter = requestIdToQuarter[requestId];
-        Score storage score = scores[quarter];
-
-        if (err.length > 0) {
-            // Error occurred - clear submission so it can be retried
-            score.submitted = false;
-            emit ScoreVerified(quarter, 0, 0, false);
-            return;
-        }
-
-        // Decode response: (patriotsScore << 16) | (seahawksScore << 8) | verified
-        uint256 decoded = abi.decode(response, (uint256));
-        uint8 patriotsScore = uint8(decoded >> 16);
-        uint8 seahawksScore = uint8((decoded >> 8) & 0xFF);
-        bool verified = (decoded & 0xFF) == 1;
-
-        emit ScoreVerified(quarter, patriotsScore, seahawksScore, verified);
-
-        if (!verified) {
-            // No consensus - clear submission so it can be retried
-            score.submitted = false;
-            return;
-        }
-
-        // Score verified by multiple sources - finalize
-        score.teamAScore = patriotsScore;
-        score.teamBScore = seahawksScore;
-        score.settled = true;
-
-        _advanceState(quarter);
-
-        (address winner, uint256 payout) = getWinner(quarter);
-        emit ScoreSettled(quarter, winner, payout);
     }
 
     // ============ Internal Functions ============
@@ -438,11 +351,66 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         else state = PoolState.FINAL_SCORED;
     }
 
-    function _quarterToString(Quarter q) internal pure returns (string memory) {
-        if (q == Quarter.Q1) return "1";
-        if (q == Quarter.Q2) return "2";
-        if (q == Quarter.Q3) return "3";
-        return "4";
+    function _settleQuarter(Quarter quarter) internal {
+        (address winner, uint256 payout) = getWinner(quarter);
+
+        // Add any rolled amount from previous quarters
+        uint256 effectivePayout = payout + unclaimedRolledAmount;
+
+        if (winner != address(0) && effectivePayout > 0) {
+            // Winner exists - pay them base payout + any rolled amount
+            payoutClaimed[winner][quarter] = true;
+            unclaimedRolledAmount = 0;
+
+            if (paymentToken == address(0)) {
+                (bool success,) = winner.call{value: effectivePayout}("");
+                if (!success) revert TransferFailed();
+            } else {
+                bool success = IERC20(paymentToken).transfer(winner, effectivePayout);
+                if (!success) revert TransferFailed();
+            }
+
+            emit PayoutClaimed(winner, quarter, effectivePayout);
+        } else if (payout > 0) {
+            // No winner - roll this quarter's payout forward
+            unclaimedRolledAmount += payout;
+            emit UnclaimedWinningsRolled(quarter, payout, unclaimedRolledAmount);
+        }
+
+        // After FINAL, any remaining rolled amount gets auto-distributed to all square owners
+        if (quarter == Quarter.FINAL && unclaimedRolledAmount > 0) {
+            uint256 totalToDistribute = unclaimedRolledAmount;
+            finalDistributionPool = totalToDistribute;
+            finalDistributionCalculated = true;
+            unclaimedRolledAmount = 0;
+
+            emit FinalDistributionCalculated(totalToDistribute, squaresSold);
+
+            // Auto-distribute to all square owners
+            for (uint256 i = 0; i < 100; i++) {
+                address owner = grid[i];
+                if (owner != address(0) && !finalDistributionClaimed[owner]) {
+                    finalDistributionClaimed[owner] = true;
+
+                    uint256 ownerSquares = userSquareCount[owner];
+                    uint256 ownerShare = (totalToDistribute * ownerSquares) / squaresSold;
+
+                    if (paymentToken == address(0)) {
+                        (bool success,) = owner.call{value: ownerShare}("");
+                        if (success) {
+                            emit FinalDistributionClaimed(owner, ownerShare, ownerSquares);
+                        }
+                    } else {
+                        bool success = IERC20(paymentToken).transfer(owner, ownerShare);
+                        if (success) {
+                            emit FinalDistributionClaimed(owner, ownerShare, ownerSquares);
+                        }
+                    }
+                }
+            }
+        }
+
+        emit ScoreSettled(quarter, winner, payout);
     }
 
     // ============ View Functions ============
@@ -510,6 +478,26 @@ contract SquaresPool is ISquaresPool, IFunctionsClient, VRFConsumerBaseV2Plus, A
         bool _numbersAssigned
     ) {
         return (vrfTriggerTime, vrfRequested, vrfRequestId, numbersSet);
+    }
+
+    /// @notice Get user's share of final distribution
+    function getFinalDistributionShare(address user) external view returns (uint256 share, bool claimed) {
+        claimed = finalDistributionClaimed[user];
+        if (!finalDistributionCalculated || finalDistributionPool == 0) return (0, claimed);
+        uint256 userSquares = userSquareCount[user];
+        if (userSquares == 0) return (0, claimed);
+        share = (finalDistributionPool * userSquares) / squaresSold;
+    }
+
+    /// @notice Get unclaimed winnings info
+    function getUnclaimedInfo() external view returns (
+        uint256 rolledAmount,
+        uint256 distributionPool,
+        bool distributionReady
+    ) {
+        rolledAmount = unclaimedRolledAmount;
+        distributionPool = finalDistributionPool;
+        distributionReady = finalDistributionCalculated && finalDistributionPool > 0;
     }
 
     // ============ Receive ETH ============

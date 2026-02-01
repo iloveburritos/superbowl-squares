@@ -7,9 +7,12 @@ import {IVRFCoordinatorV2Plus, VRFV2PlusClient} from "../../src/interfaces/IVRFC
 /// @notice Mock VRF Coordinator for testing
 contract MockVRFCoordinatorV2Plus is IVRFCoordinatorV2Plus {
     uint256 private _requestCounter;
+    uint256 private _subscriptionCounter;
     mapping(uint256 => address) public requestIdToConsumer;
     mapping(uint256 => address[]) public subscriptionConsumers;
     mapping(uint256 => uint96) public subscriptionBalances;
+    mapping(uint256 => uint96) public subscriptionNativeBalances;
+    mapping(uint256 => address) public subscriptionOwners;
 
     // Pending request tracking
     uint256 public lastRequestId;
@@ -125,9 +128,9 @@ contract MockVRFCoordinatorV2Plus is IVRFCoordinatorV2Plus {
     {
         return (
             subscriptionBalances[subId],
-            uint96(address(this).balance),
+            subscriptionNativeBalances[subId],
             0,
-            address(this),
+            subscriptionOwners[subId],
             subscriptionConsumers[subId]
         );
     }
@@ -143,9 +146,15 @@ contract MockVRFCoordinatorV2Plus is IVRFCoordinatorV2Plus {
     }
 
     /// @notice Create a subscription (for testing)
-    function createSubscription() external returns (uint256 subId) {
-        subId = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender)));
+    function createSubscription() external override returns (uint256 subId) {
+        subId = ++_subscriptionCounter;
+        subscriptionOwners[subId] = msg.sender;
         return subId;
+    }
+
+    /// @notice Fund a subscription with native tokens (ETH)
+    function fundSubscriptionWithNative(uint256 subId) external payable override {
+        subscriptionNativeBalances[subId] += uint96(msg.value);
     }
 
     receive() external payable {}

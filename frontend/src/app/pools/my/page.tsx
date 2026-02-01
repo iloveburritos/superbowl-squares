@@ -2,17 +2,18 @@
 
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
-import { usePoolsByCreator } from '@/hooks/useFactory';
+import { usePoolsByCreator, usePoolsParticipating } from '@/hooks/useFactory';
 import { PoolCard } from '@/components/PoolCard';
 import Link from 'next/link';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
-type Tab = 'created' | 'participating';
+type Tab = 'participating' | 'created';
 
 export default function MyPoolsPage() {
   const { address, isConnected } = useAccount();
-  const [activeTab, setActiveTab] = useState<Tab>('created');
-  const { pools: createdPools, isLoading, error } = usePoolsByCreator(address);
+  const [activeTab, setActiveTab] = useState<Tab>('participating');
+  const { pools: createdPools, isLoading: createdLoading, error: createdError } = usePoolsByCreator(address);
+  const { pools: participatingPools, isLoading: participatingLoading } = usePoolsParticipating(address);
 
   if (!isConnected) {
     return (
@@ -107,6 +108,36 @@ export default function MyPoolsPage() {
       <div className="container mx-auto px-6">
         <div className="flex gap-2 p-1 rounded-xl bg-[var(--steel)]/20 border border-[var(--steel)]/30 w-fit mb-8">
           <button
+            onClick={() => setActiveTab('participating')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'participating'
+                ? 'bg-[var(--turf-green)] text-[var(--midnight)]'
+                : 'text-[var(--smoke)] hover:text-[var(--chrome)]'
+            }`}
+            style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}
+          >
+            <span className="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="opacity-80">
+                <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+              </svg>
+              PARTICIPATING
+              {participatingPools && participatingPools.length > 0 && (
+                <span
+                  className={`ml-1 px-2 py-0.5 text-xs rounded-full ${
+                    activeTab === 'participating'
+                      ? 'bg-[var(--midnight)]/20 text-[var(--midnight)]'
+                      : 'bg-[var(--turf-green)]/20 text-[var(--turf-green)]'
+                  }`}
+                >
+                  {participatingPools.length}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
             onClick={() => setActiveTab('created')}
             className={`px-6 py-3 rounded-lg font-medium transition-all ${
               activeTab === 'created'
@@ -133,33 +164,14 @@ export default function MyPoolsPage() {
               )}
             </span>
           </button>
-          <button
-            onClick={() => setActiveTab('participating')}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
-              activeTab === 'participating'
-                ? 'bg-[var(--turf-green)] text-[var(--midnight)]'
-                : 'text-[var(--smoke)] hover:text-[var(--chrome)]'
-            }`}
-            style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}
-          >
-            <span className="flex items-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="opacity-80">
-                <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              PARTICIPATING
-            </span>
-          </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="container mx-auto px-6 pb-16">
-        {activeTab === 'created' && (
+        {activeTab === 'participating' && (
           <>
-            {isLoading ? (
+            {participatingLoading ? (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="card p-6">
@@ -182,7 +194,84 @@ export default function MyPoolsPage() {
                   </div>
                 ))}
               </div>
-            ) : error ? (
+            ) : !participatingPools || participatingPools.length === 0 ? (
+              <div className="card p-12 text-center relative overflow-hidden">
+                <div className="absolute inset-0 opacity-5">
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundImage: `
+                        linear-gradient(rgba(34, 197, 94, 0.5) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(34, 197, 94, 0.5) 1px, transparent 1px)
+                      `,
+                      backgroundSize: '40px 40px',
+                    }}
+                  />
+                </div>
+
+                <div className="relative">
+                  <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[var(--turf-green)]/20 to-[var(--turf-green)]/5 border border-[var(--turf-green)]/20 flex items-center justify-center">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                      <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                      <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                      <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                      <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                  </div>
+
+                  <h2 className="text-3xl font-bold text-[var(--chrome)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+                    NO SQUARES YET
+                  </h2>
+                  <p className="text-[var(--smoke)] mb-8 max-w-md mx-auto">
+                    You haven't purchased any squares yet. Browse pools and pick your lucky numbers!
+                  </p>
+                  <Link href="/pools" className="btn-primary text-lg px-8 py-4">
+                    Browse Pools
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {participatingPools.map((pool, index) => (
+                  <div
+                    key={pool.address}
+                    className="animate-fade-up opacity-0"
+                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'forwards' }}
+                  >
+                    <PoolCard address={pool.address} squareCount={pool.squareCount} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'created' && (
+          <>
+            {createdLoading ? (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="card p-6">
+                    <div className="animate-pulse">
+                      <div className="flex justify-between mb-4">
+                        <div className="h-6 w-2/3 rounded shimmer" />
+                        <div className="h-6 w-16 rounded-full shimmer" />
+                      </div>
+                      <div className="h-4 w-1/2 rounded shimmer mb-6" />
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        {[1, 2, 3, 4].map((j) => (
+                          <div key={j}>
+                            <div className="h-3 w-16 rounded shimmer mb-2" />
+                            <div className="h-5 w-20 rounded shimmer" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="h-2 w-full rounded-full shimmer" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : createdError ? (
               <div className="card p-12 text-center">
                 <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[var(--danger)]/10 flex items-center justify-center">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[var(--danger)]">
@@ -193,7 +282,7 @@ export default function MyPoolsPage() {
                 <h2 className="text-2xl font-bold text-[var(--chrome)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
                   FAILED TO LOAD
                 </h2>
-                <p className="text-[var(--smoke)] mb-4">{error.message}</p>
+                <p className="text-[var(--smoke)] mb-4">{createdError.message}</p>
               </div>
             ) : createdPools?.length === 0 ? (
               <div className="card p-12 text-center relative overflow-hidden">
@@ -242,55 +331,6 @@ export default function MyPoolsPage() {
               </div>
             )}
           </>
-        )}
-
-        {activeTab === 'participating' && (
-          <div className="card p-12 text-center relative overflow-hidden">
-            <div className="absolute inset-0 opacity-5">
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundImage: `
-                    linear-gradient(rgba(139, 92, 246, 0.5) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(139, 92, 246, 0.5) 1px, transparent 1px)
-                  `,
-                  backgroundSize: '40px 40px',
-                }}
-              />
-            </div>
-
-            <div className="relative">
-              <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/20 flex items-center justify-center">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" className="text-purple-400">
-                  <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                  <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                  <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                  <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              </div>
-
-              <h2 className="text-3xl font-bold text-[var(--chrome)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
-                COMING SOON
-              </h2>
-              <p className="text-[var(--smoke)] mb-6 max-w-md mx-auto">
-                Tracking pools where you own squares requires a subgraph indexer.
-                This feature will be available once the subgraph is deployed.
-              </p>
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-purple-400">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <span className="text-sm text-purple-400">Subgraph integration in progress</span>
-              </div>
-
-              <div className="mt-8">
-                <Link href="/pools" className="btn-secondary">
-                  Browse All Pools
-                </Link>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </div>
