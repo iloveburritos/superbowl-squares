@@ -361,4 +361,16 @@ export const SquaresFactoryABI = [
     name: 'PoolCreationIsPaused',
     inputs: [],
   },
+  {
+    type: 'error',
+    name: 'PoolNameAlreadyExists',
+    inputs: [{ name: 'name', type: 'string' }],
+  },
+  {
+    type: 'function',
+    name: 'isPoolNameTaken',
+    inputs: [{ name: 'name', type: 'string' }],
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
 ] as const;

@@ -31,6 +31,7 @@ contract SquaresFactory {
     // ============ State ============
     address[] public allPools;
     mapping(address => address[]) public poolsByCreator;
+    mapping(bytes32 => bool) public poolNameExists;
 
     // External contract addresses (immutable per chain)
     address public immutable vrfCoordinator;
@@ -67,6 +68,7 @@ contract SquaresFactory {
     error TransferFailed();
     error InvalidAddress();
     error PoolCreationIsPaused();
+    error PoolNameAlreadyExists(string name);
 
     // ============ Modifiers ============
     modifier onlyAdmin() {
@@ -216,6 +218,11 @@ contract SquaresFactory {
     function createPool(ISquaresPool.PoolParams calldata params) external payable returns (address pool) {
         if (poolCreationPaused) revert PoolCreationIsPaused();
 
+        // Check for duplicate pool name
+        bytes32 nameHash = keccak256(bytes(params.name));
+        if (poolNameExists[nameHash]) revert PoolNameAlreadyExists(params.name);
+        poolNameExists[nameHash] = true;
+
         // Calculate total required (creation fee + VRF funding)
         uint256 totalRequired = creationFee + vrfFundingAmount;
         if (msg.value < totalRequired) {
@@ -309,6 +316,11 @@ contract SquaresFactory {
     /// @notice Get pool count for a specific creator
     function getPoolCountByCreator(address creator) external view returns (uint256) {
         return poolsByCreator[creator].length;
+    }
+
+    /// @notice Check if a pool name is already taken
+    function isPoolNameTaken(string calldata name) external view returns (bool) {
+        return poolNameExists[keccak256(bytes(name))];
     }
 
     // ============ Receive ETH ============

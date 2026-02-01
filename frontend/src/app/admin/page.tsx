@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useAllPools } from '@/hooks/useFactory';
 import { useAdminScoreSubmit, useAdminTriggerVRF, SCORE_ADMIN_ADDRESS } from '@/hooks/useAdminScoreSubmit';
@@ -545,11 +545,7 @@ function PoolRow({ address }: { address: `0x${string}` }) {
 }
 
 function YieldWithdrawalSection({ pools, onRefresh }: { pools: `0x${string}`[]; onRefresh: () => void }) {
-  // Filter to only show finished pools with Aave configured
-  const finishedPools = pools.filter((pool) => {
-    // We'll render each pool and let PoolYieldRow handle the filtering
-    return true;
-  });
+  const [hasAavePool, setHasAavePool] = useState(false);
 
   return (
     <div className="card p-6 mb-8">
@@ -561,15 +557,34 @@ function YieldWithdrawalSection({ pools, onRefresh }: { pools: `0x${string}`[]; 
       </p>
 
       <div className="space-y-3">
-        {finishedPools.map((poolAddress) => (
-          <PoolYieldRow key={poolAddress} poolAddress={poolAddress} onRefresh={onRefresh} />
+        {pools.map((poolAddress) => (
+          <PoolYieldRow
+            key={poolAddress}
+            poolAddress={poolAddress}
+            onRefresh={onRefresh}
+            onAaveDetected={() => setHasAavePool(true)}
+          />
         ))}
       </div>
+
+      {!hasAavePool && (
+        <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/30 text-center">
+          <div className="flex items-center justify-center gap-3 text-[var(--smoke)]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--smoke)]">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="text-sm">
+              No pools with Aave yield found. ETH pools created after Aave is configured on the factory will generate yield.
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function PoolYieldRow({ poolAddress, onRefresh }: { poolAddress: `0x${string}`; onRefresh: () => void }) {
+function PoolYieldRow({ poolAddress, onRefresh, onAaveDetected }: { poolAddress: `0x${string}`; onRefresh: () => void; onAaveDetected?: () => void }) {
   const { yieldInfo, isLoading: isLoadingYield, refetch: refetchYield } = usePoolYieldInfo(poolAddress);
   const { state, isFinished } = usePoolState(poolAddress);
   const { withdrawYield, isPending, isConfirming, isSuccess, error, reset } = useWithdrawYield(poolAddress);
@@ -579,6 +594,13 @@ function PoolYieldRow({ poolAddress, onRefresh }: { poolAddress: `0x${string}`; 
     abi: SquaresPoolABI,
     functionName: 'getPoolInfo',
   });
+
+  // Notify parent when Aave is detected
+  useEffect(() => {
+    if (yieldInfo?.aaveConfigured && onAaveDetected) {
+      onAaveDetected();
+    }
+  }, [yieldInfo?.aaveConfigured, onAaveDetected]);
 
   // Handle success
   if (isSuccess) {

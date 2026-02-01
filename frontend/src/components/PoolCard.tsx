@@ -126,12 +126,10 @@ export function PoolCard({ address, showOperatorBadge, squareCount, hideIfPrivat
               {squareCount !== undefined && squareCount > 0 && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--turf-green)]/20 text-[var(--turf-green)] border border-[var(--turf-green)]/30">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                    <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                    <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
-                    <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
                   </svg>
-                  {squareCount} {squareCount === 1 ? 'SQUARE' : 'SQUARES'}
+                  YOU OWN {squareCount}
                 </span>
               )}
             </div>

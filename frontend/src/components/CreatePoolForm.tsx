@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useSwitchChain } from 'wagmi';
+import { useState, useEffect, useMemo } from 'react';
+import { useAccount, useSwitchChain, useReadContract, useChainId } from 'wagmi';
 import { parseEther, keccak256, toBytes } from 'viem';
 import { useCreatePool, usePoolCreationCost } from '@/hooks/useFactory';
+import { SquaresFactoryABI } from '@/lib/abis';
+import { FACTORY_ADDRESSES } from '@/config/wagmi';
 import { usePoolCreationPaused } from '@/hooks/useAdminPoolPause';
 import { useRouter } from 'next/navigation';
 import type { PoolParams } from '@/lib/contracts';
@@ -96,6 +98,28 @@ export function CreatePoolForm() {
   const [canSubmit, setCanSubmit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Debounced name for checking uniqueness
+  const [debouncedName, setDebouncedName] = useState(formData.name);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedName(formData.name);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [formData.name]);
+
+  // Check if pool name is already taken
+  const factoryAddress = targetChainId ? FACTORY_ADDRESSES[targetChainId] : undefined;
+  const { data: nameCheckResult, isLoading: isCheckingName } = useReadContract({
+    address: factoryAddress,
+    abi: SquaresFactoryABI,
+    functionName: 'isPoolNameTaken',
+    args: [debouncedName],
+    query: {
+      enabled: !!factoryAddress && debouncedName.trim().length > 0,
+    },
+  });
+  const isNameTaken = nameCheckResult === true;
+
   // Prevent auto-submit when navigating to Review tab
   useEffect(() => {
     if (activeSection === 3) {
@@ -117,6 +141,8 @@ export function CreatePoolForm() {
 
     if (!formData.name.trim()) {
       newErrors.name = 'Pool name is required';
+    } else if (isNameTaken) {
+      newErrors.name = 'This pool name is already taken';
     }
 
     const price = parseFloat(formData.squarePrice);
@@ -244,18 +270,18 @@ export function CreatePoolForm() {
 
       {/* Pool Creation Paused Banner */}
       {poolCreationPaused && !isDeadlinePassed && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+        <div className="p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center shrink-0">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-red-400">
-                <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
-                <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+            <div className="w-10 h-10 rounded-lg bg-[var(--championship-gold)]/20 flex items-center justify-center shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
             <div>
-              <p className="font-bold text-red-400">Pool Creation is Currently Disabled</p>
+              <p className="font-bold text-[var(--championship-gold)]">Pool Creation Closed</p>
               <p className="text-sm text-[var(--smoke)] mt-1">
-                New pool creation has been temporarily paused. Please check back later or contact the administrator.
+                It's less than 24 hours until kickoff! Random numbers have been assigned and all pools are locked in. Good luck!
               </p>
             </div>
           </div>
@@ -438,15 +464,46 @@ export function CreatePoolForm() {
 
           <div>
             <label className="label">Pool Name</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="My Super Bowl LX Pool"
-              className="input w-full text-lg"
-            />
-            {errors.name && <p className="text-[var(--danger)] text-sm mt-2">{errors.name}</p>}
+            <div className="relative">
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="My Super Bowl LX Pool"
+                className={`input w-full text-lg pr-12 ${
+                  isNameTaken ? 'border-[var(--danger)]/50 focus:border-[var(--danger)]' :
+                  formData.name.trim() && !isCheckingName && !isNameTaken ? 'border-[var(--turf-green)]/50 focus:border-[var(--turf-green)]' : ''
+                }`}
+              />
+              {formData.name.trim() && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                  {isCheckingName || formData.name !== debouncedName ? (
+                    <div className="w-5 h-5 border-2 border-[var(--smoke)] border-t-transparent rounded-full animate-spin" />
+                  ) : isNameTaken ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--danger)]">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                      <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+              )}
+            </div>
+            {isNameTaken && (
+              <p className="text-[var(--danger)] text-sm mt-2 flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                This pool name is already taken. Please choose a different name.
+              </p>
+            )}
+            {errors.name && !isNameTaken && <p className="text-[var(--danger)] text-sm mt-2">{errors.name}</p>}
           </div>
 
           {/* Private Pool Toggle */}
@@ -1052,7 +1109,7 @@ export function CreatePoolForm() {
         ) : (
           <button
             type="submit"
-            disabled={!address || isPending || isConfirming || isSwitching || payoutSum !== 100 || !canSubmit || !isFactoryConfigured || isLoadingCost || !!poolCreationPaused || isDeadlinePassed}
+            disabled={!address || isPending || isConfirming || isSwitching || payoutSum !== 100 || !canSubmit || !isFactoryConfigured || isLoadingCost || !!poolCreationPaused || isDeadlinePassed || isNameTaken || isCheckingName}
             className="btn-primary px-10 py-4 text-lg"
           >
             {isPending ? (
