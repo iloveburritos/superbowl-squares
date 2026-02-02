@@ -34,25 +34,25 @@ export default function HomePage() {
           <img
             src="https://media1.tenor.com/m/yhudPnjYPCQAAAAC/cowboys-touchdown.gif"
             alt=""
-            className="absolute top-20 left-8 w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-80 animate-bounce hidden md:block"
+            className="absolute top-24 left-[10%] xl:left-[15%] w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-80 animate-bounce hidden md:block"
             style={{ animationDuration: '3s' }}
           />
           <img
             src="https://media1.tenor.com/m/8vpMT6HBRYMAAAAC/green-bay-packers-dancing.gif"
             alt=""
-            className="absolute top-32 right-8 w-32 h-32 md:w-44 md:h-44 rounded-xl opacity-80 animate-bounce hidden md:block"
+            className="absolute top-36 right-[10%] xl:right-[15%] w-32 h-32 md:w-44 md:h-44 rounded-xl opacity-80 animate-bounce hidden md:block"
             style={{ animationDuration: '2.5s', animationDelay: '0.5s' }}
           />
           <img
             src="https://media1.tenor.com/m/-g70897ZsK0AAAAC/jamaal-williams-hips-dont-lie.gif"
             alt=""
-            className="absolute bottom-32 left-12 w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-70 animate-bounce hidden lg:block"
+            className="absolute bottom-36 left-[10%] xl:left-[15%] w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-70 animate-bounce hidden lg:block"
             style={{ animationDuration: '2.8s', animationDelay: '1s' }}
           />
           <img
             src="https://media1.tenor.com/m/6lZnLVgcbrEAAAAC/miami-dolphins-raheem-mostert.gif"
             alt=""
-            className="absolute bottom-40 right-16 w-32 h-32 md:w-40 md:h-40 rounded-xl opacity-70 animate-bounce hidden lg:block"
+            className="absolute bottom-44 right-[10%] xl:right-[15%] w-32 h-32 md:w-40 md:h-40 rounded-xl opacity-70 animate-bounce hidden lg:block"
             style={{ animationDuration: '3.2s', animationDelay: '0.3s' }}
           />
         </div>
@@ -176,7 +176,7 @@ export default function HomePage() {
         <img
           src="https://media1.tenor.com/m/O2XvgGvNQs4AAAAC/pittsburgh-steelers-antonio-brown.gif"
           alt=""
-          className="absolute -right-4 top-20 w-40 h-40 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          className="absolute right-[5%] xl:right-[10%] top-20 w-40 h-40 rounded-xl opacity-60 animate-bounce hidden lg:block"
           style={{ animationDuration: '2.7s' }}
         />
         <div className="container mx-auto px-6">
@@ -243,14 +243,14 @@ export default function HomePage() {
         <img
           src="https://media1.tenor.com/m/uvNd8oc6UEkAAAAC/ashton-jeanty-dance-jeanty-dance.gif"
           alt=""
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-40 h-40 rounded-xl opacity-50 animate-bounce hidden xl:block"
+          className="absolute left-[5%] xl:left-[10%] top-1/2 -translate-y-1/2 w-40 h-40 rounded-xl opacity-50 animate-bounce hidden xl:block"
           style={{ animationDuration: '2.4s' }}
         />
         {/* Celebration GIF on right */}
         <img
           src="https://media1.tenor.com/m/l20af90uR20AAAAC/royalsjun-kansas-city-chiefs.gif"
           alt=""
-          className="absolute right-4 top-1/3 w-44 h-44 rounded-xl opacity-50 animate-bounce hidden xl:block"
+          className="absolute right-[5%] xl:right-[10%] top-1/3 w-44 h-44 rounded-xl opacity-50 animate-bounce hidden xl:block"
           style={{ animationDuration: '3s', animationDelay: '0.5s' }}
         />
         <div className="container mx-auto px-6">
@@ -295,7 +295,7 @@ export default function HomePage() {
         <img
           src="https://media1.tenor.com/m/CRKBORMbZNwAAAAC/superbowl.gif"
           alt=""
-          className="absolute -left-4 bottom-20 w-40 h-40 rounded-xl opacity-50 hidden lg:block"
+          className="absolute left-[5%] xl:left-[10%] bottom-20 w-40 h-40 rounded-xl opacity-50 hidden lg:block"
         />
 
         <div className="container mx-auto px-6 relative">
@@ -411,13 +411,13 @@ export default function HomePage() {
         <img
           src="https://media1.tenor.com/m/jMR3X0bIqzUAAAAC/lions-football.gif"
           alt=""
-          className="absolute left-8 top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          className="absolute left-[5%] xl:left-[12%] top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
           style={{ animationDuration: '2.6s' }}
         />
         <img
           src="https://media1.tenor.com/m/5WUurUrLwtIAAAAC/minnesota-vikings.gif"
           alt=""
-          className="absolute right-8 top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          className="absolute right-[5%] xl:right-[12%] top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
           style={{ animationDuration: '2.9s', animationDelay: '0.3s' }}
         />
 
