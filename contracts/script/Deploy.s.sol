@@ -20,6 +20,7 @@ contract Deploy is Script {
         address wethGateway;
         address aWETH;
         address aUSDC;
+        address usdc;
     }
 
     // Admin address (has full control: pause creation, set fees, withdraw, etc.)
@@ -49,7 +50,8 @@ contract Deploy is Script {
                 aaveConfig.pool,
                 aaveConfig.wethGateway,
                 aaveConfig.aWETH,
-                aaveConfig.aUSDC
+                aaveConfig.aUSDC,
+                aaveConfig.usdc
             );
             console.log("Aave Pool:", aaveConfig.pool);
             console.log("WETH Gateway:", aaveConfig.wethGateway);
@@ -139,13 +141,14 @@ contract Deploy is Script {
     }
 
     function getAaveConfig(uint256 chainId) internal pure returns (AaveConfig memory) {
-        // Ethereum Sepolia
+        // Ethereum Sepolia (ETH only - Circle USDC not compatible with Aave Sepolia)
         if (chainId == 11155111) {
             return AaveConfig({
                 pool: 0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951,
                 wethGateway: 0x387d311e47e80b498169e6fb51d3193167d89F7D,
                 aWETH: 0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c,
-                aUSDC: 0x16dA4541aD1807f4443d92D26044C1147406EB80
+                aUSDC: address(0),
+                usdc: address(0) // Only ETH pools allowed on Sepolia
             });
         }
 
@@ -155,7 +158,8 @@ contract Deploy is Script {
                 pool: 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2,
                 wethGateway: 0xD322A49006FC828F9B5B37Ab215F99B4E5caB19C,
                 aWETH: 0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8,
-                aUSDC: 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c
+                aUSDC: 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c,
+                usdc: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
             });
         }
 
@@ -165,7 +169,8 @@ contract Deploy is Script {
                 pool: 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5,
                 wethGateway: 0x8be473dcfA93132559b118a2e512E32B9AB2EEE7,
                 aWETH: 0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7,
-                aUSDC: 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB
+                aUSDC: 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB,
+                usdc: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
             });
         }
 
@@ -175,7 +180,8 @@ contract Deploy is Script {
                 pool: 0x794a61358D6845594F94dc1DB02A252b5b4814aD,
                 wethGateway: 0xecD4bd3121F9FD604ffaC631bF6d41ec12f1fafb,
                 aWETH: 0xe50fA9b3c56FfB159cB0FCA61F5c9D750e8128c8,
-                aUSDC: 0x724dc807b04555b71ed48a6896b6F41593b8C637
+                aUSDC: 0x724dc807b04555b71ed48a6896b6F41593b8C637,
+                usdc: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
             });
         }
 
@@ -184,7 +190,8 @@ contract Deploy is Script {
             pool: address(0),
             wethGateway: address(0),
             aWETH: address(0),
-            aUSDC: address(0)
+            aUSDC: address(0),
+            usdc: address(0)
         });
     }
 }

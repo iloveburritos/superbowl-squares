@@ -20,6 +20,8 @@ contract DeployBase is Script {
     address constant WETH_GATEWAY = 0xa0d9C1E9E48Ca30c8d8C3B5D69FF5dc1f6DFfC24;
     address constant A_WETH = 0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7;
     address constant A_USDC = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
+    // Native USDC token address on Base
+    address constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
 
     function run() external {
         require(block.chainid == 8453, "This script is for Base only");
@@ -41,7 +43,8 @@ contract DeployBase is Script {
             AAVE_POOL,
             WETH_GATEWAY,
             A_WETH,
-            A_USDC
+            A_USDC,
+            USDC
         );
 
         // Set score admin (same as admin for unified control)

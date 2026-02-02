@@ -17,7 +17,6 @@ contract SquaresFactory {
         address paymentToken
     );
     event VRFTriggeredForAllPools(uint256 poolsTriggered);
-    event VRFTriggeredForPool(address indexed pool);
     event CreationFeeUpdated(uint256 oldFee, uint256 newFee);
     event FeesWithdrawn(address indexed to, uint256 amount);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
@@ -27,7 +26,6 @@ contract SquaresFactory {
     event VRFSubscriptionFunded(uint256 indexed subscriptionId, uint256 amount);
     event VRFSubscriptionCancelled(uint256 indexed subscriptionId, address indexed fundsRecipient);
     event ScoreSubmittedToAllPools(uint8 indexed quarter, uint8 teamAScore, uint8 teamBScore);
-    event ScoreSubmittedToPool(address indexed pool, uint8 indexed quarter, uint8 teamAScore, uint8 teamBScore);
     event PoolCreationPaused(bool paused);
     event AaveAddressesUpdated(address pool, address gateway, address aWETH, address aUSDC, address usdc);
     event YieldWithdrawnFromAllPools(uint256 poolsWithdrawn);
@@ -292,35 +290,6 @@ contract SquaresFactory {
         }
 
         emit EmergencyNumbersSetForAllPools(poolsSet);
-    }
-
-    // ============ Per-Pool Admin Functions ============
-    // These provide fallbacks when batch operations exceed gas limits
-
-    /// @notice Trigger VRF for a specific pool
-    /// @dev Use this when triggerVRFForAllPools() exceeds gas limit
-    /// @param pool Address of the pool to close and trigger VRF for
-    function triggerVRFForPool(address pool) external {
-        if (msg.sender != scoreAdmin && msg.sender != admin) revert Unauthorized();
-        SquaresPool(payable(pool)).closePoolAndRequestVRFFromFactory();
-        emit VRFTriggeredForPool(pool);
-    }
-
-    /// @notice Submit score to a specific pool
-    /// @dev Use this when submitScoreToAllPools() exceeds gas limit
-    /// @param pool Address of the pool to submit score to
-    /// @param quarter The quarter to submit (0=Q1, 1=Q2, 2=Q3, 3=Final)
-    /// @param teamAScore Team A's score
-    /// @param teamBScore Team B's score
-    function submitScoreToPool(
-        address pool,
-        uint8 quarter,
-        uint8 teamAScore,
-        uint8 teamBScore
-    ) external {
-        if (msg.sender != scoreAdmin && msg.sender != admin) revert Unauthorized();
-        SquaresPool(payable(pool)).submitScoreFromFactory(quarter, teamAScore, teamBScore);
-        emit ScoreSubmittedToPool(pool, quarter, teamAScore, teamBScore);
     }
 
     // ============ Factory Functions ============

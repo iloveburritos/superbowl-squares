@@ -20,6 +20,7 @@ contract DeploySepolia is Script {
     address constant WETH_GATEWAY = 0x387d311e47e80b498169e6fb51d3193167d89F7D;
     address constant AWETH = 0x5b071b590a59395fE4025A0Ccc1FcC931AAc1830;
     address constant AUSDC = address(0); // Not supported - Circle USDC not compatible with Aave Sepolia
+    address constant USDC = address(0); // Not supported - only ETH pools allowed on Sepolia
 
     function run() external {
         require(block.chainid == 11155111, "This script is for Sepolia only");
@@ -37,7 +38,7 @@ contract DeploySepolia is Script {
         factory.setVRFFundingAmount(1 ether);
 
         // Set Aave addresses (ETH pools will use Aave, USDC pools will not)
-        factory.setAaveAddresses(AAVE_POOL, WETH_GATEWAY, AWETH, AUSDC);
+        factory.setAaveAddresses(AAVE_POOL, WETH_GATEWAY, AWETH, AUSDC, USDC);
         console.log("Aave integration: ENABLED for ETH only (USDC not supported on Sepolia)");
 
         // Set score admin (same as admin for unified control)

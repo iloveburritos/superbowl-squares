@@ -25,6 +25,15 @@ const VRF_TRIGGER_TIMESTAMP = PURCHASE_DEADLINE_TIMESTAMP;
 const TEAM_A = 'Patriots';  // Rows
 const TEAM_B = 'Seahawks';  // Columns
 
+// Generate a unique default pool name
+function generateDefaultPoolName(): string {
+  const adjectives = ['Epic', 'Lucky', 'Golden', 'Thunder', 'Victory', 'Champion', 'Dynasty', 'Elite', 'Prime', 'Ultra'];
+  const nouns = ['Squad', 'Crew', 'Gang', 'Team', 'Club', 'League', 'Alliance', 'Legends', 'Stars', 'Champs'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${adj} ${noun} Pool`;
+}
+
 // Block explorer URLs by chain ID
 const EXPLORER_URLS: Record<number, string> = {
   1: 'https://etherscan.io',
@@ -80,8 +89,8 @@ export function CreatePoolForm() {
     }
   }, [targetChainId, selectedToken.address]);
 
-  const [formData, setFormData] = useState({
-    name: 'Super Bowl LX Pool',
+  const [formData, setFormData] = useState(() => ({
+    name: generateDefaultPoolName(),
     squarePrice: '0.1',
     maxSquaresPerUser: '10',
     q1Payout: '15',
@@ -90,7 +99,7 @@ export function CreatePoolForm() {
     finalPayout: '40',
     isPrivate: false,
     password: '',
-  });
+  }));
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState(0);
@@ -502,9 +511,23 @@ export function CreatePoolForm() {
               <p className="text-[var(--danger)] text-sm mt-2 flex items-center gap-2">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 This pool name is already taken. Please choose a different name.
+              </p>
+            )}
+            {isNameAvailable && (
+              <p className="text-[var(--turf-green)] text-sm mt-2 flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Pool name is available!
+              </p>
+            )}
+            {!targetChainId && formData.name.trim() && (
+              <p className="text-[var(--smoke)] text-sm mt-2">
+                Select a network above to check name availability
               </p>
             )}
             {errors.name && !isNameTaken && <p className="text-[var(--danger)] text-sm mt-2">{errors.name}</p>}
@@ -575,11 +598,12 @@ export function CreatePoolForm() {
                 <p className="text-xs text-[var(--smoke)] mt-2">
                   Share this password with people you want to invite. They'll need it to buy squares.
                 </p>
-                {formData.isPrivate && !formData.password && (
-                  <p className="text-xs text-[var(--championship-gold)] mt-1">
-                    Please enter a password for your private pool
-                  </p>
-                )}
+                <p className="text-xs text-[var(--championship-gold)] mt-2 flex items-center gap-1">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                    <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Use a unique password just for this pool. Passwords are visible onchain when used, so treat this like an invite code, not a secure password.
+                </p>
               </div>
             )}
           </div>

@@ -8,8 +8,8 @@ export const CHAIN_IDS = {
 
 // Factory addresses per chain
 export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
-  [CHAIN_IDS.BASE]: '0x45b17B0098002c5C33D649Aa8B5D366f1b903a5f',
-  [CHAIN_IDS.ARBITRUM]: '0x45b17B0098002c5C33D649Aa8B5D366f1b903a5f',
+  [CHAIN_IDS.BASE]: '0x7DCc02e6B37c94f0d8B1746a9cb4Af43d1A485e4',
+  [CHAIN_IDS.ARBITRUM]: '0x7DCc02e6B37c94f0d8B1746a9cb4Af43d1A485e4',
 };
 
 // Export ABIs

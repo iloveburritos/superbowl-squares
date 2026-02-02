@@ -20,6 +20,8 @@ contract DeployMainnet is Script {
     address constant WETH_GATEWAY = 0xD322A49006FC828F9B5B37Ab215F99B4E5caB19C;
     address constant A_WETH = 0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8;
     address constant A_USDC = 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c;
+    // Native USDC token address
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     function run() external {
         require(block.chainid == 1, "This script is for Mainnet only");
@@ -41,7 +43,8 @@ contract DeployMainnet is Script {
             AAVE_POOL,
             WETH_GATEWAY,
             A_WETH,
-            A_USDC
+            A_USDC,
+            USDC
         );
 
         // Set score admin (same as admin for unified control)
