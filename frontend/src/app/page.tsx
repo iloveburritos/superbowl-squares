@@ -232,13 +232,6 @@ export default function HomePage() {
 
       {/* Features Section */}
       <section className="py-24 relative overflow-hidden">
-        {/* Dancing GIF on left */}
-        <img
-          src="https://media1.tenor.com/m/uvNd8oc6UEkAAAAC/ashton-jeanty-dance-jeanty-dance.gif"
-          alt=""
-          className="absolute left-[5%] xl:left-[10%] top-1/2 -translate-y-1/2 w-40 h-40 rounded-xl opacity-50 animate-bounce hidden xl:block"
-          style={{ animationDuration: '2.4s' }}
-        />
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-[var(--chrome)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
