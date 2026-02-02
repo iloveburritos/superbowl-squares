@@ -498,6 +498,26 @@ contract SquaresPool is ISquaresPool, VRFConsumerBaseV2Plus {
 
     // ============ Admin Functions ============
 
+    /// @notice Emergency function to set numbers when VRF fails
+    /// @dev Only callable by factory (via emergencySetNumbersForAllPools) or admin
+    /// @param randomness A random seed to generate the number assignments
+    function emergencySetNumbers(uint256 randomness) external {
+        // Only admin or factory can call
+        address admin = ISquaresFactory(factory).admin();
+        require(msg.sender == admin || msg.sender == factory, "Only admin or factory");
+
+        // Must be in CLOSED state (VRF requested but not fulfilled)
+        require(state == PoolState.CLOSED, "Pool not in CLOSED state");
+
+        // Generate shuffled digits using the same logic as VRF callback
+        rowNumbers = SquaresLib.fisherYatesShuffle(randomness);
+        colNumbers = SquaresLib.fisherYatesShuffle(uint256(keccak256(abi.encodePacked(randomness, uint256(1)))));
+        numbersSet = true;
+
+        state = PoolState.NUMBERS_ASSIGNED;
+        emit NumbersAssigned(rowNumbers, colNumbers);
+    }
+
     /// @notice Withdraw accrued yield (admin only, after game is finished)
     function withdrawYield() external {
         // Only factory admin can withdraw yield

@@ -2,18 +2,14 @@ import { SquaresFactoryABI, SquaresPoolABI } from './abis';
 
 // Chain IDs
 export const CHAIN_IDS = {
-  MAINNET: 1,
   BASE: 8453,
   ARBITRUM: 42161,
-  SEPOLIA: 11155111,
 } as const;
 
-// Factory addresses per chain (to be updated after deployment)
+// Factory addresses per chain
 export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
-  [CHAIN_IDS.MAINNET]: '0x4e670Ce734c08e352b2C7aD8678fCDa63047D248',
-  [CHAIN_IDS.BASE]: '0xd573508f1D6B8751F72e3642a32c4Cc2EeFb5eA3',
-  [CHAIN_IDS.ARBITRUM]: '0xd573508f1D6B8751F72e3642a32c4Cc2EeFb5eA3',
-  [CHAIN_IDS.SEPOLIA]: '0x27b0879ceaD424B20c358d6F2dC097fCd57BdBdE',
+  [CHAIN_IDS.BASE]: '0x640EE7071cFB41eB110da287BA445a021907972e',
+  [CHAIN_IDS.ARBITRUM]: '0x640EE7071cFB41eB110da287BA445a021907972e',
 };
 
 // Export ABIs

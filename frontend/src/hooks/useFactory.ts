@@ -167,7 +167,6 @@ export function useCreatePool() {
     refetch: refetchReceipt,
   } = useWaitForTransactionReceipt({
     hash,
-    confirmations: 1,
   });
 
   const createPool = async (params: PoolParams, value?: bigint) => {

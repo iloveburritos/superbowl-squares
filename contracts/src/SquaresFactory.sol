@@ -29,6 +29,7 @@ contract SquaresFactory {
     event PoolCreationPaused(bool paused);
     event AaveAddressesUpdated(address pool, address gateway, address aWETH, address aUSDC);
     event YieldWithdrawnFromAllPools(uint256 poolsWithdrawn);
+    event EmergencyNumbersSetForAllPools(uint256 poolsSet);
 
     // ============ State ============
     address[] public allPools;
@@ -264,6 +265,27 @@ contract SquaresFactory {
         emit VRFTriggeredForAllPools(triggered);
     }
 
+    /// @notice Emergency: Set random numbers for all pools stuck in CLOSED state
+    /// @dev Use when VRF fails. Frontend generates random seed, this distributes to all stuck pools
+    /// @param randomSeed A random seed (can be frontend-generated) to create unique randomness per pool
+    function emergencySetNumbersForAllPools(uint256 randomSeed) external {
+        if (msg.sender != scoreAdmin && msg.sender != admin) revert Unauthorized();
+
+        uint256 poolsSet = 0;
+        uint256 poolCount = allPools.length;
+        for (uint256 i = 0; i < poolCount; i++) {
+            // Generate unique randomness for each pool
+            uint256 poolRandomness = uint256(keccak256(abi.encodePacked(randomSeed, i, block.timestamp)));
+            try SquaresPool(payable(allPools[i])).emergencySetNumbers(poolRandomness) {
+                poolsSet++;
+            } catch {
+                // Skip pools that aren't in CLOSED state or have other issues
+            }
+        }
+
+        emit EmergencyNumbersSetForAllPools(poolsSet);
+    }
+
     // ============ Factory Functions ============
 
     /// @notice Create a new Super Bowl Squares pool
@@ -365,11 +387,6 @@ contract SquaresFactory {
     /// @notice Get the total number of pools
     function getPoolCount() external view returns (uint256) {
         return allPools.length;
-    }
-
-    /// @notice Get pool count for a specific creator
-    function getPoolCountByCreator(address creator) external view returns (uint256) {
-        return poolsByCreator[creator].length;
     }
 
     /// @notice Check if a pool name is already taken

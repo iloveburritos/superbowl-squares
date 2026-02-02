@@ -60,9 +60,9 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
-    name: 'getPoolCountByCreator',
-    inputs: [{ name: 'creator', type: 'address' }],
-    outputs: [{ type: 'uint256' }],
+    name: 'isPoolNameTaken',
+    inputs: [{ name: 'name', type: 'string' }],
+    outputs: [{ type: 'bool' }],
     stateMutability: 'view',
   },
   {
@@ -223,6 +223,18 @@ export const SquaresFactoryABI = [
   },
   {
     type: 'function',
+    name: 'emergencySetNumbersForAllPools',
+    inputs: [{ name: 'randomSeed', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    name: 'EmergencyNumbersSetForAllPools',
+    inputs: [{ name: 'poolsSet', type: 'uint256', indexed: false }],
+  },
+  {
+    type: 'function',
     name: 'withdrawFees',
     inputs: [{ name: 'to', type: 'address' }],
     outputs: [],
@@ -365,13 +377,6 @@ export const SquaresFactoryABI = [
     type: 'error',
     name: 'PoolNameAlreadyExists',
     inputs: [{ name: 'name', type: 'string' }],
-  },
-  {
-    type: 'function',
-    name: 'isPoolNameTaken',
-    inputs: [{ name: 'name', type: 'string' }],
-    outputs: [{ type: 'bool' }],
-    stateMutability: 'view',
   },
   {
     type: 'function',

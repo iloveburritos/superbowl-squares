@@ -26,6 +26,13 @@ export const SquaresPoolABI = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'emergencySetNumbers',
+    inputs: [{ name: 'randomness', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
 
   // Score functions
   {

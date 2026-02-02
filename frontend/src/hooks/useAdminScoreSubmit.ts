@@ -244,3 +244,55 @@ export function useCancelVRFSubscription() {
     reset,
   };
 }
+
+export function useEmergencySetNumbers() {
+  const factoryAddress = useFactoryAddress();
+
+  const {
+    writeContract,
+    data: hash,
+    isPending,
+    error: writeError,
+    reset,
+  } = useWriteContract();
+
+  const {
+    isLoading: isConfirming,
+    isSuccess,
+    isError: isReceiptError,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({
+    hash,
+    confirmations: 1,
+  });
+
+  const emergencySetNumbers = () => {
+    if (!factoryAddress) {
+      console.error('Factory address not configured');
+      return;
+    }
+
+    // Generate random seed using crypto API for better randomness
+    const randomArray = new Uint8Array(32);
+    crypto.getRandomValues(randomArray);
+    const randomSeed = BigInt('0x' + Array.from(randomArray).map(b => b.toString(16).padStart(2, '0')).join(''));
+
+    writeContract({
+      address: factoryAddress,
+      abi: SquaresFactoryABI,
+      functionName: 'emergencySetNumbersForAllPools',
+      args: [randomSeed],
+    });
+  };
+
+  return {
+    emergencySetNumbers,
+    isPending,
+    isConfirming,
+    isSuccess,
+    isReceiptError,
+    error: writeError || receiptError,
+    hash,
+    reset,
+  };
+}

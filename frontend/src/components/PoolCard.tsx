@@ -134,30 +134,13 @@ export function PoolCard({ address, showOperatorBadge, squareCount, hideIfPrivat
                   YOU OWN {squareCount}
                 </span>
               )}
-              {!isPrivateLoading && (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                  isPrivate
-                    ? 'bg-[var(--smoke)]/20 text-[var(--smoke)] border border-[var(--smoke)]/30'
-                    : 'bg-[var(--turf-green)]/10 text-[var(--turf-green)]/70 border border-[var(--turf-green)]/20'
-                }`}>
-                  {isPrivate ? (
-                    <>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                        <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
-                        <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2" />
-                      </svg>
-                      PRIVATE
-                    </>
-                  ) : (
-                    <>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                        <path d="M2 12h20" stroke="currentColor" strokeWidth="2" />
-                        <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" stroke="currentColor" strokeWidth="2" />
-                      </svg>
-                      PUBLIC
-                    </>
-                  )}
+              {!isPrivateLoading && isPrivate && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--smoke)]/20 text-[var(--smoke)] border border-[var(--smoke)]/30">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                  PRIVATE
                 </span>
               )}
             </div>

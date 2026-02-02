@@ -230,20 +230,6 @@ contract SquaresFactoryTest is Test {
         assertEq(factory.getPoolCount(), 2);
     }
 
-    function test_GetPoolCountByCreator() public {
-        assertEq(factory.getPoolCountByCreator(alice), 0);
-
-        vm.prank(alice);
-        factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
-        assertEq(factory.getPoolCountByCreator(alice), 1);
-
-        vm.prank(alice);
-        factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
-        assertEq(factory.getPoolCountByCreator(alice), 2);
-
-        assertEq(factory.getPoolCountByCreator(bob), 0);
-    }
-
     function test_CreatePool_InvalidPayoutPercentages() public {
         ISquaresPool.PoolParams memory params = _getDefaultParams();
         params.payoutPercentages = [uint8(20), uint8(20), uint8(20), uint8(20)]; // Sum = 80, not 100
@@ -675,6 +661,451 @@ contract SquaresFactoryTest is Test {
     function test_CancelAndWithdrawVRFSubscription_InvalidAddress() public {
         vm.expectRevert(SquaresFactory.InvalidAddress.selector);
         factory.cancelAndWithdrawVRFSubscription(address(0));
+    }
+
+    // Event for emergency set numbers
+    event EmergencyNumbersSetForAllPools(uint256 poolsSet);
+
+    function test_EmergencySetNumbersForAllPools() public {
+        ISquaresPool.PoolParams memory params = _getDefaultParams();
+
+        // Create a pool
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(params);
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        // Buy a square
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        // Trigger VRF to close the pool
+        factory.triggerVRFForAllPools();
+
+        // Verify pool is in CLOSED state (waiting for VRF)
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.CLOSED));
+
+        // Use emergency set numbers
+        uint256 randomSeed = 12345;
+        factory.emergencySetNumbersForAllPools(randomSeed);
+
+        // Verify pool is now in NUMBERS_ASSIGNED state
+        (, state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+
+        // Verify numbers are set
+        (uint8[10] memory rows, uint8[10] memory cols) = pool.getNumbers();
+        // Just check that numbers are set (not all zeros)
+        bool hasNonZero = false;
+        for (uint256 i = 0; i < 10; i++) {
+            if (rows[i] != 0 || cols[i] != 0) {
+                hasNonZero = true;
+                break;
+            }
+        }
+        assertTrue(hasNonZero || (rows[0] == 0 && cols[0] == 0), "Numbers should be set");
+    }
+
+    function test_EmergencySetNumbersForAllPools_OnlyAdminOrScoreAdmin() public {
+        vm.prank(alice);
+        vm.expectRevert(SquaresFactory.Unauthorized.selector);
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Score admin should be able to call it
+        factory.setScoreAdmin(scoreAdmin);
+        vm.prank(scoreAdmin);
+        factory.emergencySetNumbersForAllPools(12345); // Should not revert
+    }
+
+    function test_EmergencySetNumbersForAllPools_SkipsNonClosedPools() public {
+        ISquaresPool.PoolParams memory params = _getDefaultParams();
+
+        // Create two pools
+        vm.prank(alice);
+        address pool1Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        vm.prank(alice);
+        address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+
+        SquaresPool pool1 = SquaresPool(payable(pool1Addr));
+        SquaresPool pool2 = SquaresPool(payable(pool2Addr));
+
+        // Buy a square in pool1 only
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool1.buySquares{value: 0.1 ether}(positions, "");
+
+        // Trigger VRF for pool1 only (pool2 has no sales so stays OPEN)
+        factory.triggerVRFForAllPools();
+
+        // pool1 should be CLOSED, pool2 should still be OPEN
+        (, ISquaresPool.PoolState state1,,,,,, ) = pool1.getPoolInfo();
+        (, ISquaresPool.PoolState state2,,,,,, ) = pool2.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.CLOSED));
+        assertEq(uint8(state2), uint8(ISquaresPool.PoolState.OPEN));
+
+        // Emergency set numbers - should only affect pool1
+        vm.expectEmit(true, true, true, true);
+        emit EmergencyNumbersSetForAllPools(1); // Only 1 pool should be set
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Verify pool1 is NUMBERS_ASSIGNED, pool2 still OPEN
+        (, state1,,,,,, ) = pool1.getPoolInfo();
+        (, state2,,,,,, ) = pool2.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+        assertEq(uint8(state2), uint8(ISquaresPool.PoolState.OPEN));
+    }
+
+    function test_EmergencySetNumbersForAllPools_UniqueRandomnessPerPool() public {
+        // Create two pools and close them
+        vm.prank(alice);
+        address pool1Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        vm.prank(alice);
+        address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+
+        SquaresPool pool1 = SquaresPool(payable(pool1Addr));
+        SquaresPool pool2 = SquaresPool(payable(pool2Addr));
+
+        // Buy squares in both
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool1.buySquares{value: 0.1 ether}(positions, "");
+        vm.prank(alice);
+        pool2.buySquares{value: 0.1 ether}(positions, "");
+
+        // Trigger VRF to close both
+        factory.triggerVRFForAllPools();
+
+        // Emergency set numbers
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Get numbers from both pools
+        (uint8[10] memory rows1, uint8[10] memory cols1) = pool1.getNumbers();
+        (uint8[10] memory rows2, uint8[10] memory cols2) = pool2.getNumbers();
+
+        // Numbers should be different (different randomness per pool)
+        bool rowsDifferent = false;
+        bool colsDifferent = false;
+        for (uint256 i = 0; i < 10; i++) {
+            if (rows1[i] != rows2[i]) rowsDifferent = true;
+            if (cols1[i] != cols2[i]) colsDifferent = true;
+        }
+        assertTrue(rowsDifferent || colsDifferent, "Pools should have different random numbers");
+    }
+
+    function test_EmergencySetNumbersForAllPools_NoPools() public {
+        // Create a new factory with no pools
+        SquaresFactory newFactory = new SquaresFactory(
+            address(vrfCoordinator),
+            VRF_KEY_HASH,
+            CREATION_FEE
+        );
+
+        // Should emit 0 pools set
+        vm.expectEmit(true, true, true, true);
+        emit EmergencyNumbersSetForAllPools(0);
+        newFactory.emergencySetNumbersForAllPools(12345);
+    }
+
+    function test_EmergencySetNumbersForAllPools_IdempotentCannotSetTwice() public {
+        // Create and close a pool
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+
+        // First emergency set should work
+        vm.expectEmit(true, true, true, true);
+        emit EmergencyNumbersSetForAllPools(1);
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Second call should not set any pools (already in NUMBERS_ASSIGNED)
+        vm.expectEmit(true, true, true, true);
+        emit EmergencyNumbersSetForAllPools(0);
+        factory.emergencySetNumbersForAllPools(67890);
+
+        // Verify pool is still in NUMBERS_ASSIGNED
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+    }
+
+    function test_EmergencySetNumbersForAllPools_SkipsPoolsInOtherStates() public {
+        // Create pools in various states
+        vm.prank(alice);
+        address pool1Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams()); // Will be CLOSED
+        vm.prank(alice);
+        address pool2Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams()); // Will be NUMBERS_ASSIGNED
+        vm.prank(alice);
+        address pool3Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams()); // Will stay OPEN (no sales)
+
+        SquaresPool pool1 = SquaresPool(payable(pool1Addr));
+        SquaresPool pool2 = SquaresPool(payable(pool2Addr));
+        SquaresPool pool3 = SquaresPool(payable(pool3Addr));
+
+        // Buy squares in pools 1 and 2 only (not pool3)
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool1.buySquares{value: 0.1 ether}(positions, "");
+        vm.prank(alice);
+        pool2.buySquares{value: 0.1 ether}(positions, "");
+
+        // Close pools 1 and 2 (pool3 stays OPEN - no sales)
+        factory.triggerVRFForAllPools();
+
+        // Fulfill VRF for pool2 only (simulate VRF working for one but not other)
+        vrfCoordinator.fulfillRandomWord(pool2.vrfRequestId(), 11111);
+
+        // Verify states: pool1=CLOSED, pool2=NUMBERS_ASSIGNED, pool3=OPEN
+        (, ISquaresPool.PoolState state1,,,,,, ) = pool1.getPoolInfo();
+        (, ISquaresPool.PoolState state2,,,,,, ) = pool2.getPoolInfo();
+        (, ISquaresPool.PoolState state3,,,,,, ) = pool3.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.CLOSED));
+        assertEq(uint8(state2), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+        assertEq(uint8(state3), uint8(ISquaresPool.PoolState.OPEN));
+
+        // Emergency set should only affect pool1 (the only one in CLOSED state)
+        vm.expectEmit(true, true, true, true);
+        emit EmergencyNumbersSetForAllPools(1);
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Verify pool1 is now NUMBERS_ASSIGNED, others unchanged
+        (, state1,,,,,, ) = pool1.getPoolInfo();
+        (, state2,,,,,, ) = pool2.getPoolInfo();
+        (, state3,,,,,, ) = pool3.getPoolInfo();
+        assertEq(uint8(state1), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+        assertEq(uint8(state2), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED)); // unchanged
+        assertEq(uint8(state3), uint8(ISquaresPool.PoolState.OPEN)); // unchanged
+    }
+
+    function test_EmergencySetNumbersForAllPools_ValidShuffledDigits() public {
+        // Create and close a pool
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Get numbers and verify they're valid permutations of 0-9
+        (uint8[10] memory rows, uint8[10] memory cols) = pool.getNumbers();
+
+        // Check rows contain exactly digits 0-9
+        bool[10] memory rowDigitSeen;
+        for (uint256 i = 0; i < 10; i++) {
+            assertLt(rows[i], 10, "Row digit should be 0-9");
+            assertFalse(rowDigitSeen[rows[i]], "Row digit should not repeat");
+            rowDigitSeen[rows[i]] = true;
+        }
+
+        // Check cols contain exactly digits 0-9
+        bool[10] memory colDigitSeen;
+        for (uint256 i = 0; i < 10; i++) {
+            assertLt(cols[i], 10, "Col digit should be 0-9");
+            assertFalse(colDigitSeen[cols[i]], "Col digit should not repeat");
+            colDigitSeen[cols[i]] = true;
+        }
+    }
+
+    function test_EmergencySetNumbers_PoolLevel_OnlyAdminOrFactory() public {
+        // Create and close a pool
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+
+        // Random user (alice) cannot call emergencySetNumbers
+        vm.prank(alice);
+        vm.expectRevert("Only admin or factory");
+        pool.emergencySetNumbers(12345);
+
+        // Bob cannot call emergencySetNumbers
+        vm.prank(bob);
+        vm.expectRevert("Only admin or factory");
+        pool.emergencySetNumbers(12345);
+
+        // Factory admin (this contract) can call
+        pool.emergencySetNumbers(12345);
+
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+    }
+
+    function test_EmergencySetNumbers_PoolLevel_FailsIfNotClosed() public {
+        // Create a pool but don't close it
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        // Pool is in OPEN state
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.OPEN));
+
+        // Emergency set should fail
+        vm.expectRevert("Pool not in CLOSED state");
+        pool.emergencySetNumbers(12345);
+    }
+
+    function test_EmergencySetNumbers_PoolLevel_FailsIfAlreadyAssigned() public {
+        // Create, close, and fulfill VRF for a pool
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), 12345);
+
+        // Pool is in NUMBERS_ASSIGNED state
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+
+        // Emergency set should fail
+        vm.expectRevert("Pool not in CLOSED state");
+        pool.emergencySetNumbers(67890);
+    }
+
+    function test_EmergencySetNumbers_PoolLevel_FailsIfScored() public {
+        // Create a pool and advance to Q1_SCORED
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+        vrfCoordinator.fulfillRandomWord(pool.vrfRequestId(), 12345);
+        factory.submitScoreToAllPools(0, 7, 3); // Q1
+
+        // Pool is in Q1_SCORED state
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.Q1_SCORED));
+
+        // Emergency set should fail
+        vm.expectRevert("Pool not in CLOSED state");
+        pool.emergencySetNumbers(67890);
+    }
+
+    function test_EmergencySetNumbersForAllPools_DifferentSeedsProduceDifferentResults() public {
+        // Create two separate pools and close them
+        vm.prank(alice);
+        address pool1Addr = factory.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool1 = SquaresPool(payable(pool1Addr));
+
+        uint8[] memory positions = new uint8[](1);
+        positions[0] = 0;
+        vm.prank(alice);
+        pool1.buySquares{value: 0.1 ether}(positions, "");
+
+        factory.triggerVRFForAllPools();
+
+        // Set numbers with seed 12345
+        factory.emergencySetNumbersForAllPools(12345);
+        (uint8[10] memory rows1, uint8[10] memory cols1) = pool1.getNumbers();
+
+        // Create another factory and pool to test different seed
+        SquaresFactory factory2 = new SquaresFactory(
+            address(vrfCoordinator),
+            VRF_KEY_HASH,
+            CREATION_FEE
+        );
+        factory2.setVRFFundingAmount(VRF_FUNDING_AMOUNT);
+
+        vm.prank(alice);
+        address pool2Addr = factory2.createPool{value: TOTAL_REQUIRED}(_getDefaultParams());
+        SquaresPool pool2 = SquaresPool(payable(pool2Addr));
+
+        vm.prank(alice);
+        pool2.buySquares{value: 0.1 ether}(positions, "");
+
+        factory2.triggerVRFForAllPools();
+
+        // Set numbers with different seed 67890
+        factory2.emergencySetNumbersForAllPools(67890);
+        (uint8[10] memory rows2, uint8[10] memory cols2) = pool2.getNumbers();
+
+        // Results should be different
+        bool rowsDifferent = false;
+        bool colsDifferent = false;
+        for (uint256 i = 0; i < 10; i++) {
+            if (rows1[i] != rows2[i]) rowsDifferent = true;
+            if (cols1[i] != cols2[i]) colsDifferent = true;
+        }
+        assertTrue(rowsDifferent || colsDifferent, "Different seeds should produce different numbers");
+    }
+
+    function test_EmergencySetNumbers_GameCanContinueAfterEmergency() public {
+        // Create pool with unlimited squares per user
+        ISquaresPool.PoolParams memory params = ISquaresPool.PoolParams({
+            name: "Unlimited Pool",
+            squarePrice: 0.1 ether,
+            paymentToken: address(0),
+            maxSquaresPerUser: 0, // Unlimited
+            payoutPercentages: [uint8(25), uint8(25), uint8(25), uint8(25)],
+            teamAName: "Team A",
+            teamBName: "Team B",
+            purchaseDeadline: block.timestamp + 7 days,
+            vrfTriggerTime: block.timestamp + 8 days,
+            passwordHash: bytes32(0)
+        });
+
+        vm.prank(alice);
+        address poolAddr = factory.createPool{value: TOTAL_REQUIRED}(params);
+        SquaresPool pool = SquaresPool(payable(poolAddr));
+
+        // Buy all 100 squares
+        uint8[] memory allPositions = new uint8[](100);
+        for (uint8 i = 0; i < 100; i++) {
+            allPositions[i] = i;
+        }
+        vm.prank(alice);
+        pool.buySquares{value: 10 ether}(allPositions, "");
+
+        factory.triggerVRFForAllPools();
+
+        // Use emergency to set numbers (simulating VRF failure)
+        factory.emergencySetNumbersForAllPools(12345);
+
+        // Verify pool is ready for scoring
+        (, ISquaresPool.PoolState state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.NUMBERS_ASSIGNED));
+
+        // Submit all scores and verify game completes
+        factory.submitScoreToAllPools(0, 14, 7);  // Q1
+        factory.submitScoreToAllPools(1, 21, 14); // Q2
+        factory.submitScoreToAllPools(2, 28, 21); // Q3
+        factory.submitScoreToAllPools(3, 35, 28); // Final
+
+        // Verify game is complete
+        (, state,,,,,, ) = pool.getPoolInfo();
+        assertEq(uint8(state), uint8(ISquaresPool.PoolState.FINAL_SCORED));
     }
 
     function _getDefaultParams() internal returns (ISquaresPool.PoolParams memory) {

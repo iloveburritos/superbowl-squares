@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useAllPools, useFactoryAddress } from '@/hooks/useFactory';
-import { useAdminScoreSubmit, useAdminTriggerVRF, SCORE_ADMIN_ADDRESS, useVRFSubscriptionId, useFundVRFSubscription, useCancelVRFSubscription } from '@/hooks/useAdminScoreSubmit';
+import { useAdminScoreSubmit, useAdminTriggerVRF, SCORE_ADMIN_ADDRESS, useVRFSubscriptionId, useFundVRFSubscription, useCancelVRFSubscription, useEmergencySetNumbers } from '@/hooks/useAdminScoreSubmit';
 import { usePoolCreationPaused, useSetPoolCreationPaused } from '@/hooks/useAdminPoolPause';
 import { usePoolYieldInfo, useWithdrawYield, usePoolState, useWithdrawAllYield } from '@/hooks/useAdminYield';
 import { useReadContract, useChainId } from 'wagmi';
@@ -72,12 +72,16 @@ export default function AdminPage() {
 
   const { pools, total, isLoading: isLoadingPools, refetch: refetchPools } = useAllPools(0, 100);
   const [poolsNeedingVRF, setPoolsNeedingVRF] = useState<number>(0);
+  const [poolsStuckInClosed, setPoolsStuckInClosed] = useState<number>(0);
   const [poolsReportedVRF, setPoolsReportedVRF] = useState<Set<string>>(new Set());
+  const [poolsReportedClosed, setPoolsReportedClosed] = useState<Set<string>>(new Set());
 
   // Wrapper refetch that resets VRF tracking
   const refetch = () => {
     setPoolsNeedingVRF(0);
+    setPoolsStuckInClosed(0);
     setPoolsReportedVRF(new Set());
+    setPoolsReportedClosed(new Set());
     refetchPools();
   };
   const {
@@ -97,6 +101,15 @@ export default function AdminPage() {
     error: vrfError,
     reset: resetVRF,
   } = useAdminTriggerVRF();
+
+  const {
+    emergencySetNumbers,
+    isPending: isEmergencyPending,
+    isConfirming: isEmergencyConfirming,
+    isSuccess: isEmergencySuccess,
+    error: emergencyError,
+    reset: resetEmergency,
+  } = useEmergencySetNumbers();
 
   const {
     isPaused: poolCreationIsPaused,
@@ -186,6 +199,14 @@ export default function AdminPage() {
     setTimeout(() => {
       refetch();
       resetVRF();
+    }, 2000);
+  }
+
+  // Refresh pools on Emergency VRF success
+  if (isEmergencySuccess) {
+    setTimeout(() => {
+      refetch();
+      resetEmergency();
     }, 2000);
   }
 
@@ -370,6 +391,83 @@ export default function AdminPage() {
 
             {vrfError && (
               <span className="text-red-400 text-sm">Error: {vrfError.message}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Emergency VRF Override Section */}
+        <div className="card p-6 mb-8 border-2 border-[var(--championship-gold)]/30">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-[var(--championship-gold)]/20 flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--championship-gold)]">
+                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-[var(--chrome)]" style={{ fontFamily: 'var(--font-display)' }}>
+                Emergency: Manual Number Assignment
+              </h2>
+              <p className="text-sm text-[var(--smoke)]">
+                Use only if VRF is not responding
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[var(--championship-gold)]/10 border border-[var(--championship-gold)]/30 mb-4">
+            <p className="text-sm text-[var(--smoke)]">
+              If Chainlink VRF fails to respond after triggering, use this to manually assign random numbers to all pools stuck in CLOSED state.
+              This generates randomness client-side and submits it to the contract.
+            </p>
+            {poolsStuckInClosed > 0 && (
+              <p className="text-sm text-[var(--championship-gold)] mt-2 font-medium">
+                {poolsStuckInClosed} pool{poolsStuckInClosed > 1 ? 's' : ''} stuck in CLOSED state (awaiting VRF)
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={emergencySetNumbers}
+              disabled={isEmergencyPending || isEmergencyConfirming || poolsStuckInClosed === 0}
+              className={`px-6 py-3 rounded-xl font-bold text-sm transition-all disabled:cursor-not-allowed ${
+                poolsStuckInClosed === 0
+                  ? 'bg-[var(--steel)]/30 text-[var(--smoke)] disabled:opacity-100'
+                  : 'bg-gradient-to-r from-[var(--championship-gold)] to-[var(--trophy-gold)] text-[var(--midnight)] hover:shadow-[0_0_20px_rgba(255,215,0,0.3)] disabled:opacity-50'
+              }`}
+            >
+              {isEmergencyPending ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Confirm in Wallet...
+                </span>
+              ) : isEmergencyConfirming ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Setting Numbers...
+                </span>
+              ) : poolsStuckInClosed === 0 ? (
+                <span>No Pools Need Emergency Assignment</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Emergency: Assign Random Numbers
+                </span>
+              )}
+            </button>
+
+            {isEmergencySuccess && (
+              <span className="text-[var(--turf-green)] flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Numbers assigned successfully!
+              </span>
+            )}
+
+            {emergencyError && (
+              <span className="text-red-400 text-sm">Error: {emergencyError.message}</span>
             )}
           </div>
         </div>
@@ -585,6 +683,14 @@ export default function AdminPage() {
                       setPoolsNeedingVRF(prev => prev + 1);
                     }
                   }
+                }} onClosedStateChange={(isClosed) => {
+                  // Track pools stuck in CLOSED state (VRF requested but not fulfilled)
+                  if (!poolsReportedClosed.has(poolAddress)) {
+                    setPoolsReportedClosed(prev => new Set(prev).add(poolAddress));
+                    if (isClosed) {
+                      setPoolsStuckInClosed(prev => prev + 1);
+                    }
+                  }
                 }} />
               ))}
             </div>
@@ -600,7 +706,7 @@ export default function AdminPage() {
   );
 }
 
-function PoolRow({ address, onOpenStateChange }: { address: `0x${string}`; onOpenStateChange?: (isOpen: boolean) => void }) {
+function PoolRow({ address, onOpenStateChange, onClosedStateChange }: { address: `0x${string}`; onOpenStateChange?: (isOpen: boolean) => void; onClosedStateChange?: (isClosed: boolean) => void }) {
   const chainId = useChainId();
   const { data: poolInfo, isLoading } = useReadContract({
     address,
@@ -610,6 +716,7 @@ function PoolRow({ address, onOpenStateChange }: { address: `0x${string}`; onOpe
 
   const state = poolInfo ? (poolInfo as [string, number, bigint, `0x${string}`, bigint, bigint, string, string])[1] : null;
   const isOpen = state === PoolState.OPEN;
+  const isClosed = state === PoolState.CLOSED;
 
   // Report open state to parent once when loaded
   useEffect(() => {
@@ -617,6 +724,13 @@ function PoolRow({ address, onOpenStateChange }: { address: `0x${string}`; onOpe
       onOpenStateChange(isOpen);
     }
   }, [state, isOpen, onOpenStateChange]);
+
+  // Report closed state to parent once when loaded
+  useEffect(() => {
+    if (state !== null && onClosedStateChange) {
+      onClosedStateChange(isClosed);
+    }
+  }, [state, isClosed, onClosedStateChange]);
 
   if (isLoading) {
     return (

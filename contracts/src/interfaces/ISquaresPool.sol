@@ -64,6 +64,7 @@ interface ISquaresPool {
 
     // VRF functions
     function closePoolAndRequestVRFFromFactory() external;
+    function emergencySetNumbers(uint256 randomness) external;
 
     // Score functions
     function submitScore(Quarter quarter, uint8 teamAScore, uint8 teamBScore) external;

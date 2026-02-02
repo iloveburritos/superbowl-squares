@@ -114,11 +114,13 @@ export function CreatePoolForm() {
     abi: SquaresFactoryABI,
     functionName: 'isPoolNameTaken',
     args: [debouncedName],
+    chainId: targetChainId,
     query: {
-      enabled: !!factoryAddress && debouncedName.trim().length > 0,
+      enabled: !!factoryAddress && !!targetChainId && debouncedName.trim().length > 0,
     },
   });
   const isNameTaken = nameCheckResult === true;
+  const isNameAvailable = nameCheckResult === false; // Explicit false, not undefined
 
   // Prevent auto-submit when navigating to Review tab
   useEffect(() => {
@@ -383,7 +385,7 @@ export function CreatePoolForm() {
           {/* Chain Selector */}
           <div>
             <label className="label">Deploy to Network</label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {SUPPORTED_CHAINS.map((chain) => {
                 const isSelected = targetChainId === chain.id;
                 const isConnectedChain = chainId === chain.id;
@@ -405,31 +407,17 @@ export function CreatePoolForm() {
                         : 'bg-[var(--steel)]/10 border-[var(--steel)]/30 hover:border-[var(--steel)]/50'
                     }`}
                   >
-                    {chain.testnet && (
-                      <span className="absolute top-2 right-2 text-[8px] px-1.5 py-0.5 rounded bg-[var(--championship-gold)]/20 text-[var(--championship-gold)]">
-                        TESTNET
-                      </span>
-                    )}
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-[var(--steel)]/30 flex items-center justify-center">
-                        {chain.name === 'Ethereum' || chain.name === 'Sepolia' ? (
-                          <svg width="16" height="16" viewBox="0 0 256 417" fill="none">
-                            <path fill="#627EEA" d="M127.961 0l-2.795 9.5v275.668l2.795 2.79 127.962-75.638z"/>
-                            <path fill="#8c9eff" d="M127.962 0L0 212.32l127.962 75.639V154.158z"/>
-                            <path fill="#627EEA" d="M127.961 312.187l-1.575 1.92v98.199l1.575 4.601L256 236.587z"/>
-                            <path fill="#8c9eff" d="M127.962 416.905v-104.72L0 236.585z"/>
-                          </svg>
-                        ) : chain.name.includes('Base') ? (
+                        {chain.name === 'Base' ? (
                           <svg width="16" height="16" viewBox="0 0 111 111" fill="none">
                             <circle cx="55.5" cy="55.5" r="55.5" fill="#0052FF"/>
                             <path d="M55.5 95c21.815 0 39.5-17.685 39.5-39.5S77.315 16 55.5 16C34.408 16 17.174 32.507 16.03 53h52.92v5H16.03C17.174 78.493 34.408 95 55.5 95z" fill="white"/>
                           </svg>
                         ) : chain.name === 'Arbitrum' ? (
-                          <svg width="16" height="16" viewBox="0 0 40 40" fill="none">
-                            <rect width="40" height="40" rx="8" fill="#2D374B"/>
-                            <path d="M20.3716 10.6001L27.7289 27.3787L24.8918 27.379L23.3795 23.7452H16.6178L18.7001 19.1064L21.2174 25.1001H21.2275L23.4047 20.0081L19.8199 11.1613C19.6261 10.702 19.1772 10.4001 18.6799 10.4001H17.8001C17.3028 10.4001 16.8539 10.702 16.6601 11.1613L10.2001 26.4001H13.3387L14.8564 22.8H18.7001L16.6178 27.4388H16.6205L13.3868 27.4401L20.3716 10.6001Z" fill="#28A0F0"/>
-                            <path d="M27.7716 27.4001L27.729 27.3787L24.892 27.379H24.8918L24.8919 27.3789L24.8916 27.3793L24.8918 27.379L27.7287 27.3787L27.7289 27.3787L27.7716 27.4001Z" fill="#28A0F0"/>
-                            <path d="M20 7L15 10.4H25L20 7Z" fill="#96BEDC"/>
+                          <svg width="16" height="16" viewBox="0 0 48 48" fill="none">
+                            <path d="M24 4L44 14V34L24 44L4 34V14L24 4Z" stroke="#2D6AE0" strokeWidth="3" fill="none"/>
+                            <path d="M18 32L24 14L30 32M20 27H28" stroke="#2D6AE0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         ) : (
                           <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
@@ -455,6 +443,19 @@ export function CreatePoolForm() {
                 );
               })}
             </div>
+            <details className="mt-3 group">
+              <summary className="text-xs text-[var(--smoke)] cursor-pointer hover:text-[var(--chrome)] transition-colors flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[var(--smoke)]">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Why no Ethereum mainnet?
+              </summary>
+              <p className="mt-2 text-xs text-[var(--smoke)] pl-4 border-l-2 border-[var(--steel)]/30">
+                The Super Bowl is almost here and Chainlink VRF on mainnet wasn't being reliable for random number generation.
+                <span className="text-[var(--championship-gold)]"> Blame Chainlink!</span> <span className="opacity-60">(jk, we love you Chainlink)</span>
+              </p>
+            </details>
             {isSwitching && (
               <p className="text-sm text-[var(--smoke)] mt-2 flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-[var(--turf-green)] border-t-transparent rounded-full animate-spin" />
@@ -479,7 +480,7 @@ export function CreatePoolForm() {
                 placeholder="My Super Bowl LX Pool"
                 className={`input w-full text-lg pr-12 ${
                   isNameTaken ? 'border-[var(--danger)]/50 focus:border-[var(--danger)]' :
-                  formData.name.trim() && !isCheckingName && !isNameTaken ? 'border-[var(--turf-green)]/50 focus:border-[var(--turf-green)]' : ''
+                  isNameAvailable ? 'border-[var(--turf-green)]/50 focus:border-[var(--turf-green)]' : ''
                 }`}
               />
               {formData.name.trim() && (
@@ -491,12 +492,12 @@ export function CreatePoolForm() {
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                       <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
-                  ) : (
+                  ) : isNameAvailable ? (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                       <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -681,24 +682,6 @@ export function CreatePoolForm() {
             </div>
           </div>
 
-          {/* ERC20 Notice */}
-          {!isNativeToken(selectedToken) && (
-            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <div className="flex items-start gap-3">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-blue-400 mt-0.5 shrink-0">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <div>
-                  <p className="text-blue-400 font-medium">ERC20 Token Selected</p>
-                  <p className="text-sm text-[var(--smoke)] mt-1">
-                    When players buy squares, they'll first need to approve the pool contract to spend their {selectedToken.symbol}.
-                    This is a standard ERC20 approval flow.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -827,11 +810,6 @@ export function CreatePoolForm() {
               <span className="text-[var(--smoke)]">Deploy to Network</span>
               <span className="font-bold text-[var(--turf-green)]">
                 {SUPPORTED_CHAINS.find(c => c.id === targetChainId)?.name || 'Not selected'}
-                {SUPPORTED_CHAINS.find(c => c.id === targetChainId)?.testnet && (
-                  <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-[var(--championship-gold)]/20 text-[var(--championship-gold)]">
-                    TESTNET
-                  </span>
-                )}
               </span>
             </div>
           </div>
@@ -908,20 +886,6 @@ export function CreatePoolForm() {
             </div>
           </div>
 
-          {/* ERC20 Notice in Review */}
-          {!isNativeToken(selectedToken) && (
-            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <div className="flex items-start gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-blue-400 mt-0.5 shrink-0">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <p className="text-sm text-[var(--smoke)]">
-                  Players will need to approve {selectedToken.symbol} spending before buying squares
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Payouts */}
           <div className="p-4 rounded-xl bg-[var(--steel)]/10 border border-[var(--steel)]/20">
@@ -989,6 +953,21 @@ export function CreatePoolForm() {
               </div>
             </div>
           )}
+
+          {/* No Fees Notice */}
+          <div className="p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/20">
+            <div className="flex items-start gap-3">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)] mt-0.5 shrink-0">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div>
+                <p className="text-[var(--turf-green)] font-medium">Zero Fees</p>
+                <p className="text-xs text-[var(--smoke)] mt-1">
+                  100% of the pot goes to winners. While funds sit in the pool, they earn yield on Aave. We keep that instead of charging fees. The power of programmable money!
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {payoutSum !== 100 && (
