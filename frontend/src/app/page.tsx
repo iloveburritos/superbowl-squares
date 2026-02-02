@@ -29,12 +29,38 @@ export default function HomePage() {
               backgroundSize: '60px 60px',
             }}
           />
+
+          {/* Fun floating GIFs */}
+          <img
+            src="https://media1.tenor.com/m/yhudPnjYPCQAAAAC/cowboys-touchdown.gif"
+            alt=""
+            className="absolute top-20 left-8 w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-80 animate-bounce hidden md:block"
+            style={{ animationDuration: '3s' }}
+          />
+          <img
+            src="https://media1.tenor.com/m/8vpMT6HBRYMAAAAC/green-bay-packers-dancing.gif"
+            alt=""
+            className="absolute top-32 right-8 w-32 h-32 md:w-44 md:h-44 rounded-xl opacity-80 animate-bounce hidden md:block"
+            style={{ animationDuration: '2.5s', animationDelay: '0.5s' }}
+          />
+          <img
+            src="https://media1.tenor.com/m/-g70897ZsK0AAAAC/jamaal-williams-hips-dont-lie.gif"
+            alt=""
+            className="absolute bottom-32 left-12 w-36 h-36 md:w-48 md:h-48 rounded-xl opacity-70 animate-bounce hidden lg:block"
+            style={{ animationDuration: '2.8s', animationDelay: '1s' }}
+          />
+          <img
+            src="https://media1.tenor.com/m/6lZnLVgcbrEAAAAC/miami-dolphins-raheem-mostert.gif"
+            alt=""
+            className="absolute bottom-40 right-16 w-32 h-32 md:w-40 md:h-40 rounded-xl opacity-70 animate-bounce hidden lg:block"
+            style={{ animationDuration: '3.2s', animationDelay: '0.3s' }}
+          />
         </div>
 
         <div className="container mx-auto px-6 relative z-10">
           <div className="max-w-5xl mx-auto text-center">
             {/* Super Bowl LX Logo */}
-            <div className="flex justify-center mb-6 animate-fade-up opacity-0" style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
+            <div className="flex justify-center mb-6 mt-4 md:mt-6 animate-fade-up opacity-0" style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
               <SuperBowlLXLogo size={160} />
             </div>
 
@@ -97,7 +123,7 @@ export default function HomePage() {
 
             {/* Subtitle */}
             <p className="hero-subtitle mx-auto mb-10 animate-fade-up opacity-0" style={{ animationDelay: '400ms', animationFillMode: 'forwards' }}>
-              Create or join betting pools for the big game. Automatic payouts, no manual work, 100% of the pot to winners. The power of programmable money.
+              Create or join betting pools for the big game. Automatic payouts, no manual work, 100% of the pot to winners.
             </p>
 
             {/* CTA Buttons */}
@@ -116,6 +142,23 @@ export default function HomePage() {
               <StatItem value="4" label="Payouts" />
               <StatItem value="∞" label="Possibilities" />
             </div>
+
+            {/* Fun touchdown celebration row */}
+            <div className="flex justify-center items-center gap-4 mt-8 animate-fade-up opacity-0" style={{ animationDelay: '700ms', animationFillMode: 'forwards' }}>
+              <img
+                src="https://media1.tenor.com/m/fjGP5hz0LlwAAAAC/touchdown-touch-down.gif"
+                alt="Touchdown!"
+                className="w-24 h-24 md:w-32 md:h-32 rounded-xl"
+              />
+              <span className="text-2xl md:text-3xl font-bold text-[var(--championship-gold)] animate-pulse" style={{ fontFamily: 'var(--font-display)' }}>
+                TOUCHDOWN!
+              </span>
+              <img
+                src="https://media1.tenor.com/m/fjGP5hz0LlwAAAAC/touchdown-touch-down.gif"
+                alt="Touchdown!"
+                className="w-24 h-24 md:w-32 md:h-32 rounded-xl"
+              />
+            </div>
           </div>
         </div>
 
@@ -128,7 +171,14 @@ export default function HomePage() {
       </section>
 
       {/* What is Super Bowl Squares */}
-      <section className="py-20 relative">
+      <section className="py-20 relative overflow-hidden">
+        {/* Floating celebration GIF */}
+        <img
+          src="https://media1.tenor.com/m/O2XvgGvNQs4AAAAC/pittsburgh-steelers-antonio-brown.gif"
+          alt=""
+          className="absolute -right-4 top-20 w-40 h-40 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          style={{ animationDuration: '2.7s' }}
+        />
         <div className="container mx-auto px-6">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
@@ -172,7 +222,10 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="mt-8 p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/20">
+                <div className="mt-8 p-4 rounded-xl bg-[var(--turf-green)]/10 border border-[var(--turf-green)]/20 relative">
+                  <div className="absolute -top-3 -right-3 bg-[var(--championship-gold)] text-[var(--midnight)] text-xs font-bold px-2 py-1 rounded-full transform rotate-12" style={{ fontFamily: 'var(--font-display)' }}>
+                    HOT TIP!
+                  </div>
                   <p className="text-sm">
                     <span className="text-[var(--turf-green)] font-bold">Example:</span>{' '}
                     <span className="text-[var(--chrome)]">Score is Patriots <span className="text-[var(--turf-green)] font-bold">17</span> - Seahawks <span className="text-[var(--turf-green)] font-bold">14</span>. Take the last digit of each: Patriots = <span className="text-[var(--turf-green)] font-bold">7</span>, Seahawks = <span className="text-[var(--turf-green)] font-bold">4</span>. The square where 7 (Patriots side) meets 4 (Seahawks side) wins!</span>
@@ -185,7 +238,21 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 relative">
+      <section className="py-24 relative overflow-hidden">
+        {/* Dancing GIF on left */}
+        <img
+          src="https://media1.tenor.com/m/uvNd8oc6UEkAAAAC/ashton-jeanty-dance-jeanty-dance.gif"
+          alt=""
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-40 h-40 rounded-xl opacity-50 animate-bounce hidden xl:block"
+          style={{ animationDuration: '2.4s' }}
+        />
+        {/* Celebration GIF on right */}
+        <img
+          src="https://media1.tenor.com/m/l20af90uR20AAAAC/royalsjun-kansas-city-chiefs.gif"
+          alt=""
+          className="absolute right-4 top-1/3 w-44 h-44 rounded-xl opacity-50 animate-bounce hidden xl:block"
+          style={{ animationDuration: '3s', animationDelay: '0.5s' }}
+        />
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-[var(--chrome)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
@@ -220,9 +287,16 @@ export default function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="py-24 relative">
+      <section className="py-24 relative overflow-hidden">
         {/* Background accent */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--turf-green)]/5 to-transparent" />
+
+        {/* Fun dancing GIF */}
+        <img
+          src="https://media1.tenor.com/m/CRKBORMbZNwAAAAC/superbowl.gif"
+          alt=""
+          className="absolute -left-4 bottom-20 w-40 h-40 rounded-xl opacity-50 hidden lg:block"
+        />
 
         <div className="container mx-auto px-6 relative">
           <div className="text-center mb-16">
@@ -303,18 +377,67 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Good Luck Banner */}
+      <section className="py-12 relative overflow-hidden">
+        <div className="container mx-auto px-6">
+          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10">
+            <img
+              src="https://media1.tenor.com/m/n5aeCRX9GvAAAAAC/the-simpsons-homer-simpson.gif"
+              alt=""
+              className="w-28 h-28 md:w-36 md:h-36 rounded-xl"
+            />
+            <div className="text-center">
+              <p className="text-3xl md:text-5xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+                <span className="text-[var(--championship-gold)]">GOOD</span>{' '}
+                <span className="gradient-text">LUCK!</span>
+              </p>
+              <p className="text-[var(--smoke)] mt-2">May the sports be ever in your favor</p>
+            </div>
+            <img
+              src="https://media1.tenor.com/m/01FaUirNGWcAAAAC/kendrick-lamar-kendrick-lamar-super-bowl.gif"
+              alt=""
+              className="w-28 h-28 md:w-36 md:h-36 rounded-xl"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-24 relative overflow-hidden">
         {/* Background glow */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[var(--turf-green)]/10 rounded-full blur-[128px]" />
 
+        {/* Celebration GIFs around CTA */}
+        <img
+          src="https://media1.tenor.com/m/jMR3X0bIqzUAAAAC/lions-football.gif"
+          alt=""
+          className="absolute left-8 top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          style={{ animationDuration: '2.6s' }}
+        />
+        <img
+          src="https://media1.tenor.com/m/5WUurUrLwtIAAAAC/minnesota-vikings.gif"
+          alt=""
+          className="absolute right-8 top-1/2 -translate-y-1/2 w-44 h-44 rounded-xl opacity-60 animate-bounce hidden lg:block"
+          style={{ animationDuration: '2.9s', animationDelay: '0.3s' }}
+        />
+
         <div className="container mx-auto px-6 relative">
           <div className="max-w-3xl mx-auto text-center">
-            {/* Team logos */}
-            <div className="flex justify-center items-center gap-8 mb-8">
+            {/* Team logos with fun celebration */}
+            <div className="flex justify-center items-center gap-4 md:gap-8 mb-8">
+              <img
+                src="https://media1.tenor.com/m/Q1j0dzzb2X0AAAAC/cincinnati-bengals-jerome-simpson.gif"
+                alt=""
+                className="w-24 h-24 md:w-32 md:h-32 rounded-xl hidden sm:block"
+              />
               <PatriotsLogo size={48} />
               <SuperBowlLXLogo size={80} />
               <SeahawksLogo size={48} />
+              <img
+                src="https://media1.tenor.com/m/Q1j0dzzb2X0AAAAC/cincinnati-bengals-jerome-simpson.gif"
+                alt=""
+                className="w-24 h-24 md:w-32 md:h-32 rounded-xl hidden sm:block"
+              />
             </div>
 
             <h2 className="text-4xl md:text-5xl font-bold text-[var(--chrome)] mb-6" style={{ fontFamily: 'var(--font-display)' }}>
@@ -323,9 +446,19 @@ export default function HomePage() {
             <p className="text-xl text-[var(--smoke)] mb-4">
               Patriots vs Seahawks • Super Bowl LX
             </p>
-            <p className="text-lg text-[var(--smoke)] mb-10">
+            <p className="text-lg text-[var(--smoke)] mb-6">
               Automatic payouts, automatic rollovers, 100% of the pot to winners. Powered by programmable money.
             </p>
+
+            {/* Fun "GO TEAM" banner */}
+            <div className="flex justify-center items-center gap-3 mb-8">
+              <span className="text-3xl md:text-4xl animate-bounce" style={{ animationDuration: '1s' }}>🏈</span>
+              <span className="text-xl md:text-2xl font-bold text-[var(--championship-gold)]" style={{ fontFamily: 'var(--font-display)' }}>
+                GO TEAM! SCORE POINTS!
+              </span>
+              <span className="text-3xl md:text-4xl animate-bounce" style={{ animationDuration: '1s', animationDelay: '0.2s' }}>🏈</span>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/pools" className="btn-primary text-lg px-12 py-4">
                 Get Started
