@@ -32,10 +32,6 @@ import { useVRFStatus, formatTimeRemaining } from '@/hooks/useVRFStatus';
 
 import { PoolState, POOL_STATE_LABELS, Quarter, QUARTER_LABELS, getFactoryAddress } from '@/lib/contracts';
 
-// Only Sepolia has contracts deployed
-const SUPPORTED_CHAIN_ID = 11155111;
-const SUPPORTED_CHAIN_NAME = 'Sepolia';
-
 export default function PoolPage() {
   const params = useParams();
   const poolAddress = params.id as `0x${string}`;
@@ -466,15 +462,24 @@ export default function PoolPage() {
             WRONG NETWORK
           </h2>
           <p className="text-[var(--smoke)] mb-6">
-            Super Bowl Squares is currently deployed on {SUPPORTED_CHAIN_NAME}. Please switch networks to view this pool.
+            Super Bowl Squares is deployed on Base and Arbitrum. Please switch networks to view this pool.
           </p>
-          <button
-            onClick={() => switchChain({ chainId: SUPPORTED_CHAIN_ID })}
-            disabled={isSwitching}
-            className="btn-primary"
-          >
-            {isSwitching ? 'Switching...' : `Switch to ${SUPPORTED_CHAIN_NAME}`}
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => switchChain({ chainId: 8453 })}
+              disabled={isSwitching}
+              className="btn-primary"
+            >
+              {isSwitching ? 'Switching...' : 'Switch to Base'}
+            </button>
+            <button
+              onClick={() => switchChain({ chainId: 42161 })}
+              disabled={isSwitching}
+              className="btn-secondary"
+            >
+              {isSwitching ? 'Switching...' : 'Switch to Arbitrum'}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1524,7 +1529,7 @@ export default function PoolPage() {
                 )}
                 {vrfStatus?.vrfRequested && !vrfStatus.numbersAssigned && (
                   <p className="text-xs text-blue-400 mt-2">
-                    Waiting for VRF response (~30 sec on Sepolia)...
+                    Waiting for VRF response...
                   </p>
                 )}
               </div>

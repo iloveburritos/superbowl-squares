@@ -4,10 +4,11 @@ import { useChainId, useSwitchChain } from 'wagmi';
 import { useAllPools, useFactoryAddress } from '@/hooks/useFactory';
 import { PublicPoolsList } from '@/components/PublicPoolsList';
 import Link from 'next/link';
+import { SUPPORTED_CHAINS } from '@/config/wagmi';
 
-// Only Sepolia has contracts deployed
-const SUPPORTED_CHAIN_ID = 11155111;
-const SUPPORTED_CHAIN_NAME = 'Sepolia';
+// Default to Base if user needs to switch
+const DEFAULT_CHAIN_ID = 8453;
+const DEFAULT_CHAIN_NAME = 'Base';
 
 export default function PoolsPage() {
   const chainId = useChainId();
@@ -74,15 +75,24 @@ export default function PoolsPage() {
               WRONG NETWORK
             </h2>
             <p className="text-[var(--smoke)] mb-6">
-              Super Bowl Squares is currently deployed on {SUPPORTED_CHAIN_NAME}. Please switch networks to continue.
+              Super Bowl Squares is deployed on Base and Arbitrum. Please switch networks to continue.
             </p>
-            <button
-              onClick={() => switchChain({ chainId: SUPPORTED_CHAIN_ID })}
-              disabled={isSwitching}
-              className="btn-primary"
-            >
-              {isSwitching ? 'Switching...' : `Switch to ${SUPPORTED_CHAIN_NAME}`}
-            </button>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => switchChain({ chainId: 8453 })}
+                disabled={isSwitching}
+                className="btn-primary"
+              >
+                {isSwitching ? 'Switching...' : 'Switch to Base'}
+              </button>
+              <button
+                onClick={() => switchChain({ chainId: 42161 })}
+                disabled={isSwitching}
+                className="btn-secondary"
+              >
+                {isSwitching ? 'Switching...' : 'Switch to Arbitrum'}
+              </button>
+            </div>
           </div>
         ) : error ? (
           <div className="card p-12 text-center">
