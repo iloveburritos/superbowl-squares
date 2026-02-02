@@ -75,9 +75,9 @@ export const config = createConfig({
 // Chain-specific contract addresses
 export const FACTORY_ADDRESSES: Record<number, `0x${string}`> = {
   // Base
-  8453: '0x7DCc02e6B37c94f0d8B1746a9cb4Af43d1A485e4',
+  8453: '0x43D68e59B2CBE6e624834E495EDCB121b00BD54f',
   // Arbitrum
-  42161: '0x7DCc02e6B37c94f0d8B1746a9cb4Af43d1A485e4',
+  42161: '0x728D5BE3079d116416aD6F3f08ea0CadaaE30aB8',
 };
 
 export const SUPPORTED_CHAINS = [
