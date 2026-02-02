@@ -415,7 +415,7 @@ export function CreatePoolForm() {
                             <path d="M55.5 95c21.815 0 39.5-17.685 39.5-39.5S77.315 16 55.5 16C34.408 16 17.174 32.507 16.03 53h52.92v5H16.03C17.174 78.493 34.408 95 55.5 95z" fill="white"/>
                           </svg>
                         ) : chain.name === 'Arbitrum' ? (
-                          <img src="/logos/Arbitrum.png" alt="Arbitrum" width="16" height="16" className="rounded-full" />
+                          <img src="/logos/Arbitrum.png" alt="Arbitrum" width="32" height="32" className="rounded-full" />
                         ) : (
                           <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
                             <circle cx="16" cy="16" r="16" fill="#627EEA"/>
