@@ -961,9 +961,9 @@ export function CreatePoolForm() {
                 <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <div>
-                <p className="text-[var(--turf-green)] font-medium">Zero Fees</p>
+                <p className="text-[var(--turf-green)] font-medium">100% to Winners</p>
                 <p className="text-xs text-[var(--smoke)] mt-1">
-                  100% of the pot goes to winners. While funds sit in the pool, they earn yield on Aave. We keep that instead of charging fees. The power of programmable money!
+                  No cut from the pot. While funds sit in the pool, they earn yield on Aave. We keep that instead of taking a percentage. The power of programmable money!
                 </p>
               </div>
             </div>

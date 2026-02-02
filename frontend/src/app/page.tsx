@@ -97,7 +97,7 @@ export default function HomePage() {
 
             {/* Subtitle */}
             <p className="hero-subtitle mx-auto mb-10 animate-fade-up opacity-0" style={{ animationDelay: '400ms', animationFillMode: 'forwards' }}>
-              Create or join betting pools for the big game. Powered by blockchain for transparent, trustless, and automatic payouts after every quarter.
+              Create or join betting pools for the big game. Automatic payouts, no manual work, 100% of the pot to winners. The power of programmable money.
             </p>
 
             {/* CTA Buttons */}
@@ -189,30 +189,30 @@ export default function HomePage() {
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-[var(--chrome)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
-              WHY CHOOSE ONCHAIN?
+              PROGRAMMABLE MONEY
             </h2>
             <p className="text-[var(--smoke)] max-w-2xl mx-auto">
-              Traditional squares pools rely on trust. We built something better.
+              Everything runs on code. Payouts are automatic, rollovers are handled, and operators earn yield instead of charging fees.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard
               icon={<DiceIcon />}
-              title="Provably Fair"
-              description="Random number assignment uses Chainlink VRF (Verifiable Random Function) to ensure truly random and cryptographically verifiable results."
+              title="Fair Randomness"
+              description="Random number assignment uses Chainlink VRF to ensure no one can predict or manipulate which numbers get assigned to which squares."
               delay={100}
             />
             <FeatureCard
-              icon={<OracleIcon />}
-              title="Transparent Scoring"
-              description="Game scores are submitted onchain by a trusted admin. All transactions are publicly auditable and immutably recorded on the blockchain."
+              icon={<WalletIcon />}
+              title="Automatic Payouts"
+              description="Winners get paid instantly when scores are submitted. No chasing down the pool operator. No waiting for Venmo transfers."
               delay={200}
             />
             <FeatureCard
-              icon={<WalletIcon />}
-              title="Instant Payouts"
-              description="Smart contracts automatically distribute winnings after each quarter settles. No waiting, no disputes, no middlemen."
+              icon={<ZeroFeesIcon />}
+              title="100% to Winners"
+              description="No cut from the pot. Pool funds earn yield on Aave while they sit. We keep the interest instead of taking a percentage."
               delay={300}
             />
           </div>
@@ -324,7 +324,7 @@ export default function HomePage() {
               Patriots vs Seahawks • Super Bowl LX
             </p>
             <p className="text-lg text-[var(--smoke)] mb-10">
-              Join the decentralized future of Super Bowl squares. No trust required, just blockchain.
+              Automatic payouts, automatic rollovers, 100% of the pot to winners. Powered by programmable money.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/pools" className="btn-primary text-lg px-12 py-4">
@@ -551,6 +551,14 @@ function WalletIcon() {
       <rect x="2" y="6" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="2" />
       <path d="M6 6V5a3 3 0 013-3h6a3 3 0 013 3v1" stroke="currentColor" strokeWidth="2" />
       <circle cx="16" cy="13" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ZeroFeesIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[var(--turf-green)]">
+      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
