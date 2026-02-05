@@ -156,7 +156,7 @@ function ActiveChat({
     isLoadingGroup,
     isSending,
     sendMessage,
-    joinGroup,
+    syncGroup,
     hasGroup,
   } = usePoolChat({ client, poolAddress, grid, isPrivate, isOperator });
 
@@ -199,38 +199,45 @@ function ActiveChat({
 
   // No group found and not operator — show join / waiting state
   if (!hasGroup) {
-    if (!isPrivate) {
-      // Public pool: user must own a square to join
-      if (!userOwnsSquare) {
-        return (
-          <div className="p-6 text-center space-y-3">
-            <div className="w-12 h-12 mx-auto rounded-xl bg-[var(--warning)]/20 border border-[var(--warning)]/30 flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--warning)]">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <p className="text-sm text-[var(--smoke)]">
-              You need to own a square to join the pool chat.
-            </p>
-            <p className="text-xs text-[var(--steel)]">
-              Purchase a square to participate in the conversation.
-            </p>
-          </div>
-        );
-      }
+    // Grid still loading — don't show the "must own" error yet
+    if (!grid) {
       return (
-        <div className="p-6 text-center space-y-3">
-          <p className="text-sm text-[var(--smoke)]">
-            Pool chat is available. Sync to check if you've been added.
-          </p>
-          <button onClick={joinGroup} className="btn-secondary text-sm py-2 px-6">
-            Join Chat
-          </button>
+        <div className="p-6 text-center">
+          <div className="w-6 h-6 mx-auto border-2 border-[var(--info)] border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs text-[var(--smoke)]">Loading chat...</p>
         </div>
       );
     }
+    // Grid loaded — user must own a square to chat
+    if (!userOwnsSquare) {
+      return (
+        <div className="p-6 text-center space-y-3">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-[var(--warning)]/20 border border-[var(--warning)]/30 flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--warning)]">
+              <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="text-sm text-[var(--smoke)]">
+            You must own a square in this pool to participate in chat.
+          </p>
+          <p className="text-xs text-[var(--steel)]">
+            Purchase a square to join the conversation.
+          </p>
+        </div>
+      );
+    }
+    // User owns a square but hasn't been added to the group yet.
+    // The pool creator needs to open the chat so the lazy sync can add them.
+    // Provide a sync button to re-check.
     return (
-      <EmptyState text="Chat will appear once the pool creator sets it up and you're added." />
+      <div className="p-6 text-center space-y-3">
+        <p className="text-sm text-[var(--smoke)]">
+          Waiting to be added to the pool chat. The pool creator needs to open the chat once to sync members.
+        </p>
+        <button onClick={syncGroup} className="btn-secondary text-sm py-2 px-6">
+          Refresh
+        </button>
+      </div>
     );
   }
 

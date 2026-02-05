@@ -47,13 +47,12 @@ export function usePoolChat({
 
   // ---------------------------------------------------
   // Find or create the pool's XMTP group
+  // Only the operator creates the group to prevent duplicates.
+  // Other members discover it after the operator's lazy sync
+  // adds them as members.
   // ---------------------------------------------------
   useEffect(() => {
-    // Wait for client and poolAddress
-    if (!client || !poolAddress) {
-      return;
-    }
-    // Already found a group (use ref to avoid race with state update)
+    if (!client || !poolAddress) return;
     if (groupFoundRef.current) {
       setIsLoadingGroup(false);
       return;
@@ -63,12 +62,8 @@ export function usePoolChat({
 
     (async () => {
       try {
-        // Sync conversations from network
         await client.conversations.sync();
-
-        // Search existing groups for one matching this pool
         const allGroups = await client.conversations.listGroups();
-
         const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
 
         if (existing) {
@@ -76,9 +71,8 @@ export function usePoolChat({
           setGroup(existing);
           const members = await existing.members();
           setMemberCount(members.length);
-          setIsLoadingGroup(false);
         } else if (isOperator) {
-          // Pool creator creates the group
+          // Only the pool creator creates the group
           const newGroup = await client.conversations.createGroupOptimistic({
             groupName: `Pool Chat`,
             groupDescription: poolGroupDescription(poolAddress),
@@ -86,16 +80,13 @@ export function usePoolChat({
           groupFoundRef.current = true;
           setGroup(newGroup);
           setMemberCount(1);
-          setIsLoadingGroup(false);
-        } else {
-          setIsLoadingGroup(false);
         }
       } catch (err) {
         console.error('[usePoolChat] Failed to find/create pool chat group:', err);
+      } finally {
         setIsLoadingGroup(false);
       }
     })();
-    // Intentionally not including isOperator in deps to avoid re-running mid-flight
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, poolAddress]);
 
@@ -103,16 +94,12 @@ export function usePoolChat({
   // Retry group creation when isOperator becomes true
   // ---------------------------------------------------
   useEffect(() => {
-    // Only relevant if we have a client, no group yet, and user is now operator
-    if (!client || !poolAddress || group || groupFoundRef.current || !isOperator) {
-      return;
-    }
+    if (!client || !poolAddress || group || groupFoundRef.current || !isOperator) return;
 
     setIsLoadingGroup(true);
 
     (async () => {
       try {
-        // Double-check no group exists (someone else might have created it)
         await client.conversations.sync();
         const allGroups = await client.conversations.listGroups();
         const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
@@ -185,7 +172,6 @@ export function usePoolChat({
           const decoded = decodeMessage(msg);
           if (decoded) {
             setMessages((prev) => {
-              // Deduplicate
               if (prev.some((m) => m.id === decoded.id)) return prev;
               return [...prev, decoded];
             });
@@ -207,10 +193,12 @@ export function usePoolChat({
 
   // ---------------------------------------------------
   // Lazy member sync: add new XMTP-enabled square owners
+  // Runs for any member who has the group (operator or
+  // anyone already added). This ensures that whenever any
+  // group member visits the page, new square owners get added.
   // ---------------------------------------------------
   useEffect(() => {
-    if (!group || !grid || !client || !isPrivate) return;
-    // Only auto-add for private pools; public pools are opt-in
+    if (!group || !grid || !client) return;
 
     let cancelled = false;
 
@@ -227,7 +215,6 @@ export function usePoolChat({
           }
         }
 
-        // Check which owners are XMTP-enabled
         const ownerAddresses = Array.from(owners);
         if (ownerAddresses.length === 0) return;
 
@@ -240,7 +227,6 @@ export function usePoolChat({
         for (const addr of ownerAddresses) {
           if (!canMessageMap.get(addr.toLowerCase())) continue;
 
-          // Check if this address's inbox is already a member
           const inboxId = await client.fetchInboxIdByIdentifier(toIdentifier(addr));
           if (inboxId && !memberInboxIds.has(inboxId)) {
             toAdd.push(inboxId);
@@ -260,7 +246,7 @@ export function usePoolChat({
     return () => {
       cancelled = true;
     };
-  }, [group, grid, client, isPrivate]);
+  }, [group, grid, client]);
 
   // ---------------------------------------------------
   // Send a text message
@@ -296,16 +282,15 @@ export function usePoolChat({
   );
 
   // ---------------------------------------------------
-  // Join group (for public pools)
-  // First tries to find an existing group. If none exists and the user
-  // owns a square, creates a new group so others can join.
+  // Sync / join: re-sync conversations from network to
+  // discover if someone has added this user to the group.
+  // Used by both public and private pool members.
   // ---------------------------------------------------
-  const joinGroup = useCallback(async () => {
+  const syncGroup = useCallback(async () => {
     if (!client || !address) return;
 
     setIsLoadingGroup(true);
     try {
-      // Sync to discover if someone has added us to the group
       await client.conversations.sync();
       const groups = await client.conversations.listGroups();
       const existing = groups.find((g) => isPoolGroup(g.description, poolAddress));
@@ -315,30 +300,13 @@ export function usePoolChat({
         setGroup(existing);
         const members = await existing.members();
         setMemberCount(members.length);
-      } else if (!isPrivate && grid) {
-        // Public pool: check if user owns a square and create group
-        const userOwnsSquare = grid.some(
-          (owner) =>
-            owner?.toLowerCase() === address.toLowerCase() &&
-            owner !== '0x0000000000000000000000000000000000000000'
-        );
-
-        if (userOwnsSquare) {
-          const newGroup = await client.conversations.createGroupOptimistic({
-            groupName: `Pool Chat`,
-            groupDescription: poolGroupDescription(poolAddress),
-          });
-          groupFoundRef.current = true;
-          setGroup(newGroup);
-          setMemberCount(1);
-        }
       }
     } catch (err) {
-      console.error('Failed to join pool chat:', err);
+      console.error('Failed to sync pool chat:', err);
     } finally {
       setIsLoadingGroup(false);
     }
-  }, [client, address, poolAddress, isPrivate, grid]);
+  }, [client, address, poolAddress]);
 
   return {
     group,
@@ -348,7 +316,7 @@ export function usePoolChat({
     isSending,
     sendMessage,
     sendPoolUpdate,
-    joinGroup,
+    syncGroup,
     hasGroup: !!group,
   };
 }
@@ -358,12 +326,12 @@ export function usePoolChat({
 // ---------------------------------------------------------------------------
 
 function decodeMessage(msg: DecodedMessage<any>): ChatMessage | null {
-  if (msg.content === undefined || msg.content === null) return null;
-  const text = typeof msg.content === 'string' ? msg.content : String(msg.content);
+  // Only render plain text messages; skip system messages (group_updated, etc.)
+  if (typeof msg.content !== 'string' || !msg.content) return null;
   return {
     id: msg.id,
     senderInboxId: msg.senderInboxId,
-    text,
+    text: msg.content,
     sentAt: msg.sentAt,
   };
 }
