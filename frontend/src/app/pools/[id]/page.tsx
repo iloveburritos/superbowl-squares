@@ -10,6 +10,7 @@ import { SquaresGrid } from '@/components/SquaresGrid';
 import { ScoreDisplay } from '@/components/ScoreDisplay';
 import { PayoutBreakdown } from '@/components/PayoutBreakdown';
 import { AddressDisplay } from '@/components/AddressDisplay';
+import { ChatPanel } from '@/components/ChatPanel';
 import { findToken, ETH_TOKEN, isNativeToken, formatTokenAmount } from '@/config/tokens';
 
 import {
@@ -1208,6 +1209,15 @@ export default function PoolPage() {
                 </button>
               </div>
             </div>
+
+            {/* Pool Chat */}
+            <ChatPanel
+              poolAddress={poolAddress}
+              grid={grid}
+              isPrivate={isPrivate}
+              isOperator={isOperator}
+              totalOwners={grid ? new Set(grid.filter((a) => a && a !== '0x0000000000000000000000000000000000000000')).size : undefined}
+            />
           </div>
         </div>
       </div>
