@@ -296,9 +296,9 @@ export function usePoolChat({
   );
 
   // ---------------------------------------------------
-  // Join group (for public pools — requires someone in the group to add you)
-  // This is a request: the current user's client tries to add themselves.
-  // If the group allows it (default permissions), this works.
+  // Join group (for public pools)
+  // First tries to find an existing group. If none exists and the user
+  // owns a square, creates a new group so others can join.
   // ---------------------------------------------------
   const joinGroup = useCallback(async () => {
     if (!client || !address) return;
@@ -311,16 +311,34 @@ export function usePoolChat({
       const existing = groups.find((g) => isPoolGroup(g.description, poolAddress));
 
       if (existing) {
+        groupFoundRef.current = true;
         setGroup(existing);
         const members = await existing.members();
         setMemberCount(members.length);
+      } else if (!isPrivate && grid) {
+        // Public pool: check if user owns a square and create group
+        const userOwnsSquare = grid.some(
+          (owner) =>
+            owner?.toLowerCase() === address.toLowerCase() &&
+            owner !== '0x0000000000000000000000000000000000000000'
+        );
+
+        if (userOwnsSquare) {
+          const newGroup = await client.conversations.createGroupOptimistic({
+            groupName: `Pool Chat`,
+            groupDescription: poolGroupDescription(poolAddress),
+          });
+          groupFoundRef.current = true;
+          setGroup(newGroup);
+          setMemberCount(1);
+        }
       }
     } catch (err) {
       console.error('Failed to join pool chat:', err);
     } finally {
       setIsLoadingGroup(false);
     }
-  }, [client, address, poolAddress]);
+  }, [client, address, poolAddress, isPrivate, grid]);
 
   return {
     group,

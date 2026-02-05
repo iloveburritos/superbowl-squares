@@ -1,8 +1,12 @@
 import type { Identifier } from '@xmtp/browser-sdk';
 import { IdentifierKind } from '@xmtp/browser-sdk';
 
-// XMTP environment
-export const XMTP_ENV = 'production' as const;
+// XMTP environment - use 'dev' for localhost (CORS), 'production' for deployed apps
+export const XMTP_ENV = (
+  typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'dev'
+    : 'production'
+) as 'dev' | 'production';
 
 // Prefix used to identify pool notification messages vs regular chat
 export const POOL_UPDATE_PREFIX = '[POOL UPDATE] ';

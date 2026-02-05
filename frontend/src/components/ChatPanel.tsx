@@ -191,9 +191,33 @@ function ActiveChat({
     );
   }
 
+  // Check if current user owns a square (for public pool join validation)
+  const userOwnsSquare = grid?.some(
+    (owner) => owner?.toLowerCase() === address?.toLowerCase() &&
+    owner !== '0x0000000000000000000000000000000000000000'
+  );
+
   // No group found and not operator — show join / waiting state
   if (!hasGroup) {
     if (!isPrivate) {
+      // Public pool: user must own a square to join
+      if (!userOwnsSquare) {
+        return (
+          <div className="p-6 text-center space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-xl bg-[var(--warning)]/20 border border-[var(--warning)]/30 flex items-center justify-center">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--warning)]">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <p className="text-sm text-[var(--smoke)]">
+              You need to own a square to join the pool chat.
+            </p>
+            <p className="text-xs text-[var(--steel)]">
+              Purchase a square to participate in the conversation.
+            </p>
+          </div>
+        );
+      }
       return (
         <div className="p-6 text-center space-y-3">
           <p className="text-sm text-[var(--smoke)]">
