@@ -1215,7 +1215,6 @@ export default function PoolPage() {
               poolAddress={poolAddress}
               grid={grid}
               isPrivate={isPrivate}
-              isOperator={isOperator}
               totalOwners={grid ? new Set(grid.filter((a) => a && a !== '0x0000000000000000000000000000000000000000')).size : undefined}
             />
           </div>

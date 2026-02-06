@@ -25,8 +25,6 @@ interface UsePoolChatOptions {
   grid?: `0x${string}`[];
   /** Is this a private pool? */
   isPrivate?: boolean;
-  /** Is the current user the pool operator/creator? */
-  isOperator?: boolean;
 }
 
 export function usePoolChat({
@@ -34,7 +32,6 @@ export function usePoolChat({
   poolAddress,
   grid,
   isPrivate,
-  isOperator,
 }: UsePoolChatOptions) {
   const { address } = useAccount();
   const [group, setGroup] = useState<Group<any> | null>(null);
@@ -46,11 +43,20 @@ export function usePoolChat({
   const groupFoundRef = useRef(false);
 
   // ---------------------------------------------------
-  // Shared helper: find existing group or create one (if operator)
+  // Shared helper: find existing group or create one.
+  // Any square owner can create the group — the first
+  // person to open chat creates it and adds other
+  // XMTP-enabled owners, publishing it to the network.
   // ---------------------------------------------------
   const findOrCreateGroup = useCallback(async () => {
     if (!client || !poolAddress) return;
     if (groupFoundRef.current) return;
+
+    const userOwnsSquare = grid?.some(
+      (owner) =>
+        owner?.toLowerCase() === address?.toLowerCase() &&
+        owner !== '0x0000000000000000000000000000000000000000',
+    ) ?? false;
 
     setIsLoadingGroup(true);
 
@@ -65,30 +71,78 @@ export function usePoolChat({
         setGroup(existing);
         const members = await existing.members();
         setMemberCount(members.length);
-      } else if (isOperator) {
-        console.log('[usePoolChat] No group found — creating as operator');
+      } else if (userOwnsSquare) {
+        console.log('[usePoolChat] No group found — creating as square owner');
         const newGroup = await client.conversations.createGroupOptimistic({
           groupName: `Pool Chat`,
           groupDescription: poolGroupDescription(poolAddress),
         });
+
+        // Immediately add other XMTP-enabled square owners.
+        // addMembers() publishes the group to the network so others
+        // can discover it. If nobody else is on XMTP yet, we call
+        // publishMessages() to ensure the group is synced anyway.
+        let addedCount = 0;
+        if (grid) {
+          const owners = new Set<string>();
+          for (const addr of grid) {
+            if (
+              addr &&
+              addr !== '0x0000000000000000000000000000000000000000' &&
+              addr.toLowerCase() !== address?.toLowerCase()
+            ) {
+              owners.add(addr.toLowerCase());
+            }
+          }
+          const ownerAddresses = Array.from(owners);
+          if (ownerAddresses.length > 0) {
+            try {
+              const canMessageMap = await client.canMessage(
+                ownerAddresses.map(toIdentifier),
+              );
+              const toAdd: string[] = [];
+              for (const ownerAddr of ownerAddresses) {
+                if (!canMessageMap.get(ownerAddr)) continue;
+                const inboxId = await client.fetchInboxIdByIdentifier(
+                  toIdentifier(ownerAddr),
+                );
+                if (inboxId) toAdd.push(inboxId);
+              }
+              if (toAdd.length > 0) {
+                await newGroup.addMembers(toAdd);
+                addedCount = toAdd.length;
+              }
+            } catch (memberErr) {
+              console.warn('[usePoolChat] Failed to add initial members:', memberErr);
+            }
+          }
+        }
+
+        // Ensure group is published to the network even if no members were added
+        if (addedCount === 0) {
+          try {
+            await newGroup.publishMessages();
+          } catch (pubErr) {
+            console.warn('[usePoolChat] publishMessages failed:', pubErr);
+          }
+        }
+
         groupFoundRef.current = true;
         setGroup(newGroup);
-        setMemberCount(1);
+        setMemberCount(1 + addedCount);
       } else {
-        console.log('[usePoolChat] No group found and not operator — waiting');
+        console.log('[usePoolChat] No group found and user does not own a square');
       }
     } catch (err) {
       console.error('[usePoolChat] Failed to find/create pool chat group:', err);
     } finally {
       setIsLoadingGroup(false);
     }
-  }, [client, poolAddress, isOperator]);
+  }, [client, poolAddress, grid, address]);
 
   // ---------------------------------------------------
   // Find or create the pool's XMTP group.
-  // Re-runs when client connects or isOperator changes
-  // (covers the case where the contract read loads after
-  // the XMTP client is ready).
+  // Re-runs when client connects or grid loads.
   // ---------------------------------------------------
   useEffect(() => {
     if (!client || !poolAddress) return;
@@ -98,17 +152,16 @@ export function usePoolChat({
     }
 
     findOrCreateGroup();
-  }, [client, poolAddress, isOperator, findOrCreateGroup]);
+  }, [client, poolAddress, findOrCreateGroup]);
 
   // ---------------------------------------------------
-  // Auto-poll: if no group found yet (non-operator waiting
-  // to be added), re-check every 10s to discover the group
-  // once the operator's lazy sync has added this user.
+  // Auto-poll: if no group found yet, re-check every 10s
+  // to discover the group once another member has created
+  // it and added this user.
   // ---------------------------------------------------
   useEffect(() => {
     if (!client || !poolAddress) return;
-    if (groupFoundRef.current) return; // already have the group
-    if (isOperator) return; // operators create, don't poll
+    if (groupFoundRef.current) return;
 
     const interval = setInterval(() => {
       if (groupFoundRef.current) {
@@ -120,7 +173,7 @@ export function usePoolChat({
     }, 10_000);
 
     return () => clearInterval(interval);
-  }, [client, poolAddress, isOperator, findOrCreateGroup]);
+  }, [client, poolAddress, findOrCreateGroup]);
 
   // ---------------------------------------------------
   // Load message history when group is found

@@ -11,12 +11,11 @@ interface ChatPanelProps {
   poolAddress: `0x${string}`;
   grid?: `0x${string}`[];
   isPrivate?: boolean;
-  isOperator?: boolean;
   /** Total square owners for the "X of Y in chat" display */
   totalOwners?: number;
 }
 
-export function ChatPanel({ poolAddress, grid, isPrivate, isOperator, totalOwners }: ChatPanelProps) {
+export function ChatPanel({ poolAddress, grid, isPrivate, totalOwners }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { isConnected: walletConnected } = useAccount();
   const { client, isConnected: xmtpConnected, isLoading: xmtpLoading, error: xmtpError, connect } = useXmtp();
@@ -67,7 +66,6 @@ export function ChatPanel({ poolAddress, grid, isPrivate, isOperator, totalOwner
               poolAddress={poolAddress}
               grid={grid}
               isPrivate={isPrivate}
-              isOperator={isOperator}
               totalOwners={totalOwners}
             />
           )}
@@ -139,14 +137,12 @@ function ActiveChat({
   poolAddress,
   grid,
   isPrivate,
-  isOperator,
   totalOwners,
 }: {
   client: Client;
   poolAddress: `0x${string}`;
   grid?: `0x${string}`[];
   isPrivate?: boolean;
-  isOperator?: boolean;
   totalOwners?: number;
 }) {
   const { address } = useAccount();
@@ -158,7 +154,7 @@ function ActiveChat({
     sendMessage,
     syncGroup,
     hasGroup,
-  } = usePoolChat({ client, poolAddress, grid, isPrivate, isOperator });
+  } = usePoolChat({ client, poolAddress, grid, isPrivate });
 
   const [input, setInput] = useState('');
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -231,12 +227,13 @@ function ActiveChat({
       );
     }
     // User owns a square but hasn't been added to the group yet.
-    // The pool creator needs to open the chat so the lazy sync can add them.
-    // Provide a sync button to re-check.
+    // Another square owner may have created the group but hasn't added
+    // this user yet. Auto-poll will keep checking; Refresh triggers immediately.
     return (
       <div className="p-6 text-center space-y-3">
+        <div className="w-6 h-6 mx-auto border-2 border-[var(--info)] border-t-transparent rounded-full animate-spin mb-1" />
         <p className="text-sm text-[var(--smoke)]">
-          Waiting to be added to the pool chat. The pool creator needs to open the chat once to sync members.
+          Setting up pool chat...
         </p>
         <button onClick={syncGroup} className="btn-secondary text-sm py-2 px-6">
           Refresh
