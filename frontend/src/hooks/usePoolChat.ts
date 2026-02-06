@@ -46,10 +46,49 @@ export function usePoolChat({
   const groupFoundRef = useRef(false);
 
   // ---------------------------------------------------
-  // Find or create the pool's XMTP group
-  // Only the operator creates the group to prevent duplicates.
-  // Other members discover it after the operator's lazy sync
-  // adds them as members.
+  // Shared helper: find existing group or create one (if operator)
+  // ---------------------------------------------------
+  const findOrCreateGroup = useCallback(async () => {
+    if (!client || !poolAddress) return;
+    if (groupFoundRef.current) return;
+
+    setIsLoadingGroup(true);
+
+    try {
+      await client.conversations.sync();
+      const allGroups = await client.conversations.listGroups();
+      const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
+
+      if (existing) {
+        console.log('[usePoolChat] Found existing group for pool:', poolAddress);
+        groupFoundRef.current = true;
+        setGroup(existing);
+        const members = await existing.members();
+        setMemberCount(members.length);
+      } else if (isOperator) {
+        console.log('[usePoolChat] No group found — creating as operator');
+        const newGroup = await client.conversations.createGroupOptimistic({
+          groupName: `Pool Chat`,
+          groupDescription: poolGroupDescription(poolAddress),
+        });
+        groupFoundRef.current = true;
+        setGroup(newGroup);
+        setMemberCount(1);
+      } else {
+        console.log('[usePoolChat] No group found and not operator — waiting');
+      }
+    } catch (err) {
+      console.error('[usePoolChat] Failed to find/create pool chat group:', err);
+    } finally {
+      setIsLoadingGroup(false);
+    }
+  }, [client, poolAddress, isOperator]);
+
+  // ---------------------------------------------------
+  // Find or create the pool's XMTP group.
+  // Re-runs when client connects or isOperator changes
+  // (covers the case where the contract read loads after
+  // the XMTP client is ready).
   // ---------------------------------------------------
   useEffect(() => {
     if (!client || !poolAddress) return;
@@ -58,73 +97,8 @@ export function usePoolChat({
       return;
     }
 
-    setIsLoadingGroup(true);
-
-    (async () => {
-      try {
-        await client.conversations.sync();
-        const allGroups = await client.conversations.listGroups();
-        const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
-
-        if (existing) {
-          groupFoundRef.current = true;
-          setGroup(existing);
-          const members = await existing.members();
-          setMemberCount(members.length);
-        } else if (isOperator) {
-          // Only the pool creator creates the group
-          const newGroup = await client.conversations.createGroupOptimistic({
-            groupName: `Pool Chat`,
-            groupDescription: poolGroupDescription(poolAddress),
-          });
-          groupFoundRef.current = true;
-          setGroup(newGroup);
-          setMemberCount(1);
-        }
-      } catch (err) {
-        console.error('[usePoolChat] Failed to find/create pool chat group:', err);
-      } finally {
-        setIsLoadingGroup(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, poolAddress]);
-
-  // ---------------------------------------------------
-  // Retry group creation when isOperator becomes true
-  // ---------------------------------------------------
-  useEffect(() => {
-    if (!client || !poolAddress || group || groupFoundRef.current || !isOperator) return;
-
-    setIsLoadingGroup(true);
-
-    (async () => {
-      try {
-        await client.conversations.sync();
-        const allGroups = await client.conversations.listGroups();
-        const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
-
-        if (existing) {
-          groupFoundRef.current = true;
-          setGroup(existing);
-          const members = await existing.members();
-          setMemberCount(members.length);
-        } else {
-          const newGroup = await client.conversations.createGroupOptimistic({
-            groupName: `Pool Chat`,
-            groupDescription: poolGroupDescription(poolAddress),
-          });
-          groupFoundRef.current = true;
-          setGroup(newGroup);
-          setMemberCount(1);
-        }
-      } catch (err) {
-        console.error('[usePoolChat] Failed to create group on retry:', err);
-      } finally {
-        setIsLoadingGroup(false);
-      }
-    })();
-  }, [client, poolAddress, group, isOperator]);
+    findOrCreateGroup();
+  }, [client, poolAddress, isOperator, findOrCreateGroup]);
 
   // ---------------------------------------------------
   // Load message history when group is found
@@ -284,29 +258,15 @@ export function usePoolChat({
   // ---------------------------------------------------
   // Sync / join: re-sync conversations from network to
   // discover if someone has added this user to the group.
-  // Used by both public and private pool members.
+  // For the operator, also creates the group if it doesn't exist.
   // ---------------------------------------------------
   const syncGroup = useCallback(async () => {
     if (!client || !address) return;
 
-    setIsLoadingGroup(true);
-    try {
-      await client.conversations.sync();
-      const groups = await client.conversations.listGroups();
-      const existing = groups.find((g) => isPoolGroup(g.description, poolAddress));
-
-      if (existing) {
-        groupFoundRef.current = true;
-        setGroup(existing);
-        const members = await existing.members();
-        setMemberCount(members.length);
-      }
-    } catch (err) {
-      console.error('Failed to sync pool chat:', err);
-    } finally {
-      setIsLoadingGroup(false);
-    }
-  }, [client, address, poolAddress]);
+    // Reset ref so findOrCreateGroup can run again
+    groupFoundRef.current = false;
+    await findOrCreateGroup();
+  }, [client, address, findOrCreateGroup]);
 
   return {
     group,
