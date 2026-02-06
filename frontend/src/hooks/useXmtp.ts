@@ -70,6 +70,24 @@ export function useXmtp() {
 
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
+  // Try Client.build() — reuses existing OPFS database without requiring a signature.
+  // Returns the client on success, or null if no local database exists.
+  const tryBuild = useCallback(async (addr: string): Promise<Client | null> => {
+    try {
+      const identifier = toIdentifier(addr);
+      const client = await Client.build(identifier, {
+        env: XMTP_ENV,
+        loggingLevel: LogLevel.Error,
+      });
+      console.log('[XMTP] Reconnected via Client.build() — no signature needed');
+      return client;
+    } catch {
+      console.log('[XMTP] Client.build() failed (no local DB)');
+      return null;
+    }
+  }, []);
+
+  // Full connect: try Client.build() first, fall back to Client.create() (needs signature)
   const connect = useCallback(async () => {
     if (!walletClient) return;
     if (snap.client || connectingRef.current) return;
@@ -78,43 +96,85 @@ export function useXmtp() {
     setState({ isLoading: true, error: null });
 
     try {
-      const signer: Signer = {
-        type: 'EOA' as const,
-        getIdentifier: () => toIdentifier(walletClient.account.address),
-        signMessage: async (message: string) => {
-          const sig = await walletClient.signMessage({ message });
-          // Convert hex signature to Uint8Array
-          const hex = sig.startsWith('0x') ? sig.slice(2) : sig;
-          const bytes = new Uint8Array(hex.length / 2);
-          for (let i = 0; i < bytes.length; i++) {
-            bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-          }
-          return bytes;
-        },
-      };
+      const addr = walletClient.account.address;
 
-      const client = await Client.create(signer, {
-        env: XMTP_ENV,
-        loggingLevel: LogLevel.Error, // Suppress verbose INFO/WARN logs from WASM bindings
-      });
-      markXmtpEnabled(walletClient.account.address);
+      // 1. Try to reuse existing local database (no signature needed)
+      let client = await tryBuild(addr);
+
+      // 2. Fall back to Client.create() — requires wallet signature
+      if (!client) {
+        const signer: Signer = {
+          type: 'EOA' as const,
+          getIdentifier: () => toIdentifier(addr),
+          signMessage: async (message: string) => {
+            const sig = await walletClient.signMessage({ message });
+            const hex = sig.startsWith('0x') ? sig.slice(2) : sig;
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < bytes.length; i++) {
+              bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+            }
+            return bytes;
+          },
+        };
+
+        client = await Client.create(signer, {
+          env: XMTP_ENV,
+          loggingLevel: LogLevel.Error,
+        });
+        console.log('[XMTP] Created new installation via Client.create()');
+      }
+
+      markXmtpEnabled(addr);
       setState({ client, isLoading: false });
+
+      // Sync conversations and messages from the network
+      try {
+        await client.conversations.syncAll();
+      } catch (syncErr) {
+        console.warn('[XMTP] Post-connect syncAll failed:', syncErr);
+      }
     } catch (err: any) {
       setState({ isLoading: false, error: err?.message ?? 'Failed to connect XMTP' });
     } finally {
       connectingRef.current = false;
     }
-  }, [walletClient, snap.client]);
+  }, [walletClient, snap.client, tryBuild]);
 
-  // Auto-reconnect: if the wallet is connected and user previously enabled XMTP,
-  // re-initialize the client automatically (no new signature needed if local DB exists)
+  // Auto-reconnect: silently try Client.build() only (no signature popup).
+  // If the local OPFS database exists, the user is reconnected instantly.
+  // If it doesn't exist, clear the flag — user must click "Enable Chat" again.
   useEffect(() => {
-    if (!walletClient || !address) return;
+    if (!address) return;
     if (snap.client || connectingRef.current) return;
     if (!isXmtpEnabled(address)) return;
 
-    connect();
-  }, [walletClient, address, snap.client, connect]);
+    connectingRef.current = true;
+    setState({ isLoading: true, error: null });
+
+    (async () => {
+      try {
+        const client = await tryBuild(address);
+        if (client) {
+          markXmtpEnabled(address);
+          setState({ client, isLoading: false });
+          // Sync conversations and messages from the network
+          try {
+            await client.conversations.syncAll();
+          } catch (syncErr) {
+            console.warn('[XMTP] Auto-reconnect syncAll failed:', syncErr);
+          }
+        } else {
+          // No local DB — user must explicitly enable chat again
+          clearXmtpEnabled(address);
+          setState({ isLoading: false, error: null });
+        }
+      } catch {
+        setState({ isLoading: false, error: null });
+      } finally {
+        connectingRef.current = false;
+      }
+    })();
+  }, [address, snap.client, tryBuild]);
 
   const disconnect = useCallback(() => {
     if (snap.client) {
