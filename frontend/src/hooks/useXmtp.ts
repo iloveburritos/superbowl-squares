@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useEffect, useSyncExternalStore } from 'react';
 import { useWalletClient } from 'wagmi';
 import { useAccount } from 'wagmi';
 import { Client, LogLevel, type Signer } from '@xmtp/browser-sdk';
@@ -88,24 +88,7 @@ export function useXmtp() {
     [],
   );
 
-  // Core initialization: uses Client.create() which handles all cases:
-  // - If local DB + registered identity exist → reuses them (NO signature needed)
-  // - If identity exists on network but local DB is bad → re-registers (signature needed)
-  // - If no identity exists → creates new one (signature needed)
-  const initClient = useCallback(
-    async (wc: NonNullable<typeof walletClient>): Promise<Client> => {
-      const signer = makeSigner(wc);
-      const client = await Client.create(signer, {
-        env: XMTP_ENV,
-        loggingLevel: LogLevel.Error,
-      });
-      console.log('[XMTP] Client initialized via Client.create()');
-      return client;
-    },
-    [makeSigner],
-  );
-
-  // Connect: called by user clicking "Enable Chat" or by auto-reconnect
+  // Connect: called by user clicking "Enable Chat" (shows wallet popup if needed)
   const connect = useCallback(async () => {
     if (!walletClient) return;
     if (snap.client || connectingRef.current) return;
@@ -115,7 +98,12 @@ export function useXmtp() {
 
     try {
       const addr = walletClient.account.address;
-      const client = await initClient(walletClient);
+      const signer = makeSigner(walletClient);
+      const client = await Client.create(signer, {
+        env: XMTP_ENV,
+        loggingLevel: LogLevel.Error,
+      });
+      console.log('[XMTP] Client initialized via Client.create()');
 
       markXmtpEnabled(addr);
       setState({ client, isLoading: false });
@@ -132,12 +120,69 @@ export function useXmtp() {
     } finally {
       connectingRef.current = false;
     }
-  }, [walletClient, snap.client, initClient]);
+  }, [walletClient, snap.client, makeSigner]);
 
-  // NOTE: Auto-reconnect removed. On the production XMTP network, Client.create()
-  // requires a wallet signature for each new browser "installation" (MLS key pair).
-  // This caused an unsolicited signature popup on page load. Users must now click
-  // "Enable Chat" each session to connect XMTP.
+  // ---------------------------------------------------------------------------
+  // Silent auto-reconnect: if the user previously enabled XMTP on this origin,
+  // try to re-create the client using a "silent" signer that REJECTS any
+  // signature request. If the local OPFS database is intact, Client.create()
+  // reuses it without needing a signature → reconnect works invisibly.
+  // If the DB is missing (new origin, cleared storage), the silent signer
+  // throws → we catch and leave the user at "Enable Chat".
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!walletClient || !address) return;
+    if (snap.client || connectingRef.current) return;
+    if (!isXmtpEnabled(address)) return;
+
+    let cancelled = false;
+    connectingRef.current = true;
+
+    (async () => {
+      try {
+        const silentSigner: Signer = {
+          type: 'EOA' as const,
+          getIdentifier: () => toIdentifier(walletClient.account.address),
+          signMessage: async () => {
+            throw new Error('Silent reconnect — signature not available');
+          },
+        };
+
+        const client = await Client.create(silentSigner, {
+          env: XMTP_ENV,
+          loggingLevel: LogLevel.Error,
+        });
+
+        if (cancelled) {
+          client.close();
+          return;
+        }
+
+        console.log('[XMTP] Silent auto-reconnect succeeded (local DB intact)');
+        setState({ client, isLoading: false });
+
+        try {
+          await client.conversations.syncAll();
+          console.log('[XMTP] Post-reconnect syncAll completed');
+        } catch (syncErr) {
+          console.warn('[XMTP] Post-reconnect syncAll failed:', syncErr);
+        }
+      } catch {
+        // Silent reconnect failed — local DB missing or signature needed.
+        // User must click "Enable Chat" manually.
+        if (!cancelled) {
+          console.log('[XMTP] Silent auto-reconnect failed — signature needed');
+        }
+      } finally {
+        if (!cancelled) connectingRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      connectingRef.current = false;
+    };
+  }, [walletClient, address, snap.client]);
 
   const disconnect = useCallback(() => {
     if (snap.client) {
