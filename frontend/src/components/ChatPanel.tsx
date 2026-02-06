@@ -101,9 +101,9 @@ function EnableChatPrompt({
         </svg>
       </div>
       <div>
-        <p className="text-sm font-medium text-[var(--chrome)] mb-1">Enable Pool Chat</p>
+        <p className="text-sm font-medium text-[var(--chrome)] mb-1">Join Pool Chat</p>
         <p className="text-xs text-[var(--smoke)]">
-          Sign a message to create your XMTP identity. One-time setup, no gas fee.
+          Sign a message to join the encrypted pool chat. One-time setup, no gas fee.
         </p>
       </div>
       {error && (
@@ -122,7 +122,7 @@ function EnableChatPrompt({
             Connecting...
           </span>
         ) : (
-          'Enable Chat'
+          'Join Chat'
         )}
       </button>
     </div>

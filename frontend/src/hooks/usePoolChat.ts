@@ -288,6 +288,59 @@ export function usePoolChat({
   }, [group]);
 
   // ---------------------------------------------------
+  // Periodic convergence: even after finding a group,
+  // re-sync and check if there's a canonical group with
+  // a smaller ID (e.g. another user created one and added us).
+  // This ensures all users converge on the same group.
+  // ---------------------------------------------------
+  useEffect(() => {
+    if (!group || !client) return;
+
+    let cancelled = false;
+
+    const converge = async () => {
+      try {
+        await client.conversations.syncAll();
+        const canonical = await findCanonicalGroup();
+        if (canonical && canonical.id !== group.id) {
+          console.log(`[usePoolChat] Converging to canonical group ${canonical.id} (was ${group.id})`);
+          setGroup(canonical);
+          // Load messages from canonical group
+          await canonical.sync();
+          const history = await canonical.messages({
+            direction: SortDirection.Ascending,
+            limit: BigInt(100),
+          });
+          if (!cancelled) {
+            setMessages(decodeMessages(history));
+            const members = await canonical.members();
+            setMemberCount(members.length);
+          }
+        } else if (canonical) {
+          // Same group — just sync new messages
+          await group.sync();
+          const history = await group.messages({
+            direction: SortDirection.Ascending,
+            limit: BigInt(100),
+          });
+          if (!cancelled) {
+            setMessages(decodeMessages(history));
+          }
+        }
+      } catch (err) {
+        console.error('[usePoolChat] Convergence check failed:', err);
+      }
+    };
+
+    const interval = setInterval(converge, 15_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [group, client, findCanonicalGroup]);
+
+  // ---------------------------------------------------
   // Lazy member sync: periodically add new XMTP-enabled
   // square owners who aren't yet in the group.
   // ---------------------------------------------------
