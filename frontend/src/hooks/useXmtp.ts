@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useCallback, useRef, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { useWalletClient } from 'wagmi';
 import { useAccount } from 'wagmi';
 import { Client, LogLevel, type Signer } from '@xmtp/browser-sdk';
@@ -134,16 +134,10 @@ export function useXmtp() {
     }
   }, [walletClient, snap.client, initClient]);
 
-  // Auto-reconnect: if the wallet is connected and user previously enabled XMTP,
-  // re-initialize the client automatically via Client.create().
-  // If the local DB and identity are intact, no signature is needed.
-  useEffect(() => {
-    if (!walletClient || !address) return;
-    if (snap.client || connectingRef.current) return;
-    if (!isXmtpEnabled(address)) return;
-
-    connect();
-  }, [walletClient, address, snap.client, connect]);
+  // NOTE: Auto-reconnect removed. On the production XMTP network, Client.create()
+  // requires a wallet signature for each new browser "installation" (MLS key pair).
+  // This caused an unsolicited signature popup on page load. Users must now click
+  // "Enable Chat" each session to connect XMTP.
 
   const disconnect = useCallback(() => {
     if (snap.client) {

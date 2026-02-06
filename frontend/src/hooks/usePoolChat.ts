@@ -55,7 +55,7 @@ export function usePoolChat({
     setIsLoadingGroup(true);
 
     try {
-      await client.conversations.sync();
+      await client.conversations.syncAll();
       const allGroups = await client.conversations.listGroups();
       const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
 
@@ -98,6 +98,28 @@ export function usePoolChat({
     }
 
     findOrCreateGroup();
+  }, [client, poolAddress, isOperator, findOrCreateGroup]);
+
+  // ---------------------------------------------------
+  // Auto-poll: if no group found yet (non-operator waiting
+  // to be added), re-check every 10s to discover the group
+  // once the operator's lazy sync has added this user.
+  // ---------------------------------------------------
+  useEffect(() => {
+    if (!client || !poolAddress) return;
+    if (groupFoundRef.current) return; // already have the group
+    if (isOperator) return; // operators create, don't poll
+
+    const interval = setInterval(() => {
+      if (groupFoundRef.current) {
+        clearInterval(interval);
+        return;
+      }
+      console.log('[usePoolChat] Auto-polling for group discovery...');
+      findOrCreateGroup();
+    }, 10_000);
+
+    return () => clearInterval(interval);
   }, [client, poolAddress, isOperator, findOrCreateGroup]);
 
   // ---------------------------------------------------

@@ -161,11 +161,15 @@ function ActiveChat({
   } = usePoolChat({ client, poolAddress, grid, isPrivate, isOperator });
 
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages (scoped to the messages container
+  // so it doesn't shift the outer page)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   const handleSend = async () => {
@@ -259,7 +263,7 @@ function ActiveChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-xs text-[var(--steel)]">No messages yet. Say hello!</p>
@@ -274,7 +278,6 @@ function ActiveChat({
             />
           ))
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
