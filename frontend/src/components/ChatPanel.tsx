@@ -11,11 +11,9 @@ interface ChatPanelProps {
   poolAddress: `0x${string}`;
   grid?: `0x${string}`[];
   isPrivate?: boolean;
-  /** Total square owners for the "X of Y in chat" display */
-  totalOwners?: number;
 }
 
-export function ChatPanel({ poolAddress, grid, isPrivate, totalOwners }: ChatPanelProps) {
+export function ChatPanel({ poolAddress, grid, isPrivate }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { isConnected: walletConnected } = useAccount();
   const { client, isConnected: xmtpConnected, isLoading: xmtpLoading, error: xmtpError, connect } = useXmtp();
@@ -66,7 +64,6 @@ export function ChatPanel({ poolAddress, grid, isPrivate, totalOwners }: ChatPan
               poolAddress={poolAddress}
               grid={grid}
               isPrivate={isPrivate}
-              totalOwners={totalOwners}
             />
           )}
         </div>
@@ -137,18 +134,15 @@ function ActiveChat({
   poolAddress,
   grid,
   isPrivate,
-  totalOwners,
 }: {
   client: Client;
   poolAddress: `0x${string}`;
   grid?: `0x${string}`[];
   isPrivate?: boolean;
-  totalOwners?: number;
 }) {
   const { address } = useAccount();
   const {
     messages,
-    memberCount,
     isLoadingGroup,
     isSending,
     sendMessage,
@@ -245,13 +239,17 @@ function ActiveChat({
   // Active chat
   const clientInboxId = client.inboxId;
 
+  // Count unique participants who have actually sent messages
+  const activeParticipants = new Set(messages.map((m) => m.senderInboxId)).size;
+
   return (
     <div className="flex flex-col" style={{ height: '400px' }}>
-      {/* Member count bar */}
+      {/* Status bar */}
       <div className="px-4 py-2 border-b border-[var(--steel)]/30 flex items-center justify-between">
         <span className="text-xs text-[var(--smoke)]">
-          {memberCount} {memberCount === 1 ? 'member' : 'members'} in chat
-          {totalOwners !== undefined && totalOwners > 0 && ` of ${totalOwners} owners`}
+          {activeParticipants > 0
+            ? `${activeParticipants} ${activeParticipants === 1 ? 'participant' : 'participants'}`
+            : 'Pool Chat'}
         </span>
         <span className="inline-flex items-center gap-1 text-[10px] text-[var(--turf-green)]">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--turf-green)]" />
