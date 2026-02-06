@@ -149,6 +149,15 @@ export function useXmtp() {
       markXmtpEnabled(addr);
       setState({ client, isLoading: false });
 
+      // Request history from other active installations of this inbox
+      // (needed when this is a new installation on a new origin/device)
+      try {
+        await client.sendSyncRequest();
+        console.log('[XMTP] History sync request sent');
+      } catch (syncReqErr) {
+        console.warn('[XMTP] sendSyncRequest failed:', syncReqErr);
+      }
+
       // Sync conversations and messages from the network
       try {
         await client.conversations.syncAll();
@@ -202,6 +211,12 @@ export function useXmtp() {
         console.log('[XMTP] Silent auto-reconnect succeeded (local DB intact)');
         setState({ client, isLoading: false });
 
+        // Request history from other installations + sync all conversations
+        try {
+          await client.sendSyncRequest();
+        } catch (syncReqErr) {
+          console.warn('[XMTP] Post-reconnect sendSyncRequest failed:', syncReqErr);
+        }
         try {
           await client.conversations.syncAll();
           console.log('[XMTP] Post-reconnect syncAll completed');

@@ -224,13 +224,14 @@ export function usePoolChat({
   // ---------------------------------------------------
   // Load message history when group is found.
   // group.sync() fetches messages sent while offline.
+  // Retries once after 3s to catch history sync arrivals.
   // ---------------------------------------------------
   useEffect(() => {
     if (!group) return;
 
     let cancelled = false;
 
-    (async () => {
+    const loadMessages = async () => {
       try {
         await group.sync();
         const history = await group.messages({
@@ -240,8 +241,20 @@ export function usePoolChat({
         if (!cancelled) {
           setMessages(decodeMessages(history));
         }
+        return history.length;
       } catch (err) {
         console.error('Failed to load chat history:', err);
+        return 0;
+      }
+    };
+
+    (async () => {
+      const count = await loadMessages();
+      // If no messages, retry after a delay — history sync from
+      // other installations may still be in progress
+      if (count === 0 && !cancelled) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (!cancelled) await loadMessages();
       }
     })();
 
