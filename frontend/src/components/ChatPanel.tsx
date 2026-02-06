@@ -243,7 +243,7 @@ function ActiveChat({
   const activeParticipants = new Set(messages.map((m) => m.senderInboxId)).size;
 
   return (
-    <div className="flex flex-col" style={{ height: '400px' }}>
+    <div className="flex flex-col overflow-hidden" style={{ height: '400px' }}>
       {/* Status bar */}
       <div className="px-4 py-2 border-b border-[var(--steel)]/30 flex items-center justify-between">
         <span className="text-xs text-[var(--smoke)]">
@@ -258,7 +258,7 @@ function ActiveChat({
       </div>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-xs text-[var(--steel)]">No messages yet. Say hello!</p>
