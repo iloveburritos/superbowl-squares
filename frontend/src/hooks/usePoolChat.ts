@@ -47,6 +47,10 @@ export function usePoolChat({
   // Any square owner can create the group — the first
   // person to open chat creates it and adds other
   // XMTP-enabled owners, publishing it to the network.
+  //
+  // Dedup strategy: if multiple groups match the pool
+  // (race condition), pick the one with the smallest ID
+  // so all users converge on the same canonical group.
   // ---------------------------------------------------
   const findOrCreateGroup = useCallback(async () => {
     if (!client || !poolAddress) return;
@@ -63,13 +67,20 @@ export function usePoolChat({
     try {
       await client.conversations.syncAll();
       const allGroups = await client.conversations.listGroups();
-      const existing = allGroups.find((g) => isPoolGroup(g.description, poolAddress));
 
-      if (existing) {
-        console.log('[usePoolChat] Found existing group for pool:', poolAddress);
+      // Find ALL matching groups and pick the canonical one (smallest ID)
+      const matching = allGroups
+        .filter((g) => isPoolGroup(g.description, poolAddress))
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+      if (matching.length > 0) {
+        const canonical = matching[0];
+        console.log(
+          `[usePoolChat] Found ${matching.length} group(s) for pool — using ${canonical.id}`,
+        );
         groupFoundRef.current = true;
-        setGroup(existing);
-        const members = await existing.members();
+        setGroup(canonical);
+        const members = await canonical.members();
         setMemberCount(members.length);
       } else if (userOwnsSquare) {
         console.log('[usePoolChat] No group found — creating as square owner');
@@ -80,8 +91,7 @@ export function usePoolChat({
 
         // Immediately add other XMTP-enabled square owners.
         // addMembers() publishes the group to the network so others
-        // can discover it. If nobody else is on XMTP yet, we call
-        // publishMessages() to ensure the group is synced anyway.
+        // can discover it via syncAll().
         let addedCount = 0;
         if (grid) {
           const owners = new Set<string>();
@@ -125,6 +135,29 @@ export function usePoolChat({
           } catch (pubErr) {
             console.warn('[usePoolChat] publishMessages failed:', pubErr);
           }
+        }
+
+        // Post-creation dedup: sync again to check if another user created
+        // a group at the same time. If so, prefer the canonical (smallest ID).
+        try {
+          await client.conversations.syncAll();
+          const refreshed = await client.conversations.listGroups();
+          const allMatching = refreshed
+            .filter((g) => isPoolGroup(g.description, poolAddress))
+            .sort((a, b) => a.id.localeCompare(b.id));
+
+          if (allMatching.length > 1 && allMatching[0].id !== newGroup.id) {
+            console.log(
+              `[usePoolChat] Duplicate detected — switching to canonical group ${allMatching[0].id}`,
+            );
+            groupFoundRef.current = true;
+            setGroup(allMatching[0]);
+            const members = await allMatching[0].members();
+            setMemberCount(members.length);
+            return;
+          }
+        } catch (dedupErr) {
+          console.warn('[usePoolChat] Post-creation dedup check failed:', dedupErr);
         }
 
         groupFoundRef.current = true;
