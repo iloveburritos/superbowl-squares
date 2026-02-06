@@ -60,6 +60,41 @@ function subscribe(listener: () => void) {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: create client with auto-recovery for installation limit
+// ---------------------------------------------------------------------------
+
+const INSTALLATION_LIMIT_RE = /registered\s+\d+\/\d+\s+installations/i;
+
+async function createClientWithRecovery(signer: Signer): Promise<Client> {
+  const opts = { env: XMTP_ENV, loggingLevel: LogLevel.Error };
+
+  try {
+    return await Client.create(signer, opts);
+  } catch (err: any) {
+    // If we hit the 10/10 installation limit, auto-revoke stale installations
+    if (INSTALLATION_LIMIT_RE.test(err?.message ?? '')) {
+      console.log('[XMTP] Hit installation limit — revoking stale installations...');
+
+      // Create a temporary client WITHOUT registering a new installation
+      const tempClient = await Client.create(signer, {
+        ...opts,
+        disableAutoRegister: true,
+      });
+
+      // Revoke all other installations (the temp client's installation
+      // is unregistered, so this effectively clears all 10 stale ones)
+      await tempClient.revokeAllOtherInstallations();
+      console.log('[XMTP] Revoked stale installations');
+      tempClient.close();
+
+      // Now create the client normally — should succeed
+      return await Client.create(signer, opts);
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
@@ -88,7 +123,7 @@ export function useXmtp() {
     [],
   );
 
-  // Connect: called by user clicking "Enable Chat" (shows wallet popup if needed)
+  // Connect: called by user clicking "Join Chat" (shows wallet popup if needed)
   const connect = useCallback(async () => {
     if (!walletClient) return;
     if (snap.client || connectingRef.current) return;
@@ -99,10 +134,7 @@ export function useXmtp() {
     try {
       const addr = walletClient.account.address;
       const signer = makeSigner(walletClient);
-      const client = await Client.create(signer, {
-        env: XMTP_ENV,
-        loggingLevel: LogLevel.Error,
-      });
+      const client = await createClientWithRecovery(signer);
       console.log('[XMTP] Client initialized via Client.create()');
 
       markXmtpEnabled(addr);
