@@ -64,6 +64,7 @@ function subscribe(listener: () => void) {
 // ---------------------------------------------------------------------------
 
 const INSTALLATION_LIMIT_RE = /registered\s+\d+\/\d+\s+installations/i;
+const INBOX_ID_RE = /InboxID\s+([a-f0-9]+)/i;
 
 async function createClientWithRecovery(signer: Signer): Promise<Client> {
   const opts = { env: XMTP_ENV, loggingLevel: LogLevel.Error };
@@ -71,26 +72,34 @@ async function createClientWithRecovery(signer: Signer): Promise<Client> {
   try {
     return await Client.create(signer, opts);
   } catch (err: any) {
-    // If we hit the 10/10 installation limit, auto-revoke stale installations
-    if (INSTALLATION_LIMIT_RE.test(err?.message ?? '')) {
-      console.log('[XMTP] Hit installation limit — revoking stale installations...');
+    const msg = err?.message ?? '';
 
-      // Create a temporary client WITHOUT registering a new installation
-      const tempClient = await Client.create(signer, {
-        ...opts,
-        disableAutoRegister: true,
-      });
+    // If we hit the 10/10 installation limit, auto-revoke ALL stale
+    // installations using static methods (no client instance needed).
+    if (!INSTALLATION_LIMIT_RE.test(msg)) throw err;
 
-      // Revoke all other installations (the temp client's installation
-      // is unregistered, so this effectively clears all 10 stale ones)
-      await tempClient.revokeAllOtherInstallations();
-      console.log('[XMTP] Revoked stale installations');
-      tempClient.close();
+    console.log('[XMTP] Hit installation limit — revoking all stale installations...');
 
-      // Now create the client normally — should succeed
-      return await Client.create(signer, opts);
-    }
-    throw err;
+    // Extract inbox ID from error message
+    const inboxIdMatch = msg.match(INBOX_ID_RE);
+    if (!inboxIdMatch) throw err;
+    const inboxId = inboxIdMatch[1];
+
+    // Fetch inbox state to get all installation IDs (static — no client needed)
+    const [inboxState] = await Client.fetchInboxStates([inboxId], XMTP_ENV);
+    if (!inboxState?.installations?.length) throw err;
+
+    const installationIds = inboxState.installations.map(
+      (inst: { bytes: Uint8Array }) => inst.bytes,
+    );
+    console.log(`[XMTP] Found ${installationIds.length} installations — revoking all...`);
+
+    // Revoke ALL installations (static — no client needed, wallet will sign)
+    await Client.revokeInstallations(signer, inboxId, installationIds, XMTP_ENV);
+    console.log('[XMTP] Revoked all stale installations');
+
+    // Now create the client normally — should succeed
+    return await Client.create(signer, opts);
   }
 }
 
