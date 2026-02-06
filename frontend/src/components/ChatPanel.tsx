@@ -146,7 +146,6 @@ function ActiveChat({
     isLoadingGroup,
     isSending,
     sendMessage,
-    syncGroup,
     hasGroup,
   } = usePoolChat({ client, poolAddress, grid, isPrivate });
 
@@ -193,17 +192,8 @@ function ActiveChat({
 
   // No group found and not operator — show join / waiting state
   if (!hasGroup) {
-    // Grid still loading — don't show the "must own" error yet
-    if (!grid) {
-      return (
-        <div className="p-6 text-center">
-          <div className="w-6 h-6 mx-auto border-2 border-[var(--info)] border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-xs text-[var(--smoke)]">Loading chat...</p>
-        </div>
-      );
-    }
-    // Grid loaded — user must own a square to chat
-    if (!userOwnsSquare) {
+    // Grid loaded and user doesn't own a square — can't chat
+    if (grid && !userOwnsSquare) {
       return (
         <div className="p-6 text-center space-y-3">
           <div className="w-12 h-12 mx-auto rounded-xl bg-[var(--warning)]/20 border border-[var(--warning)]/30 flex items-center justify-center">
@@ -220,18 +210,13 @@ function ActiveChat({
         </div>
       );
     }
-    // User owns a square but hasn't been added to the group yet.
-    // Another square owner may have created the group but hasn't added
-    // this user yet. Auto-poll will keep checking; Refresh triggers immediately.
+    // Grid still loading or user owns a square and group is being
+    // created/discovered — show loading spinner. The hook will
+    // create the group automatically for any square owner.
     return (
-      <div className="p-6 text-center space-y-3">
-        <div className="w-6 h-6 mx-auto border-2 border-[var(--info)] border-t-transparent rounded-full animate-spin mb-1" />
-        <p className="text-sm text-[var(--smoke)]">
-          Setting up pool chat...
-        </p>
-        <button onClick={syncGroup} className="btn-secondary text-sm py-2 px-6">
-          Refresh
-        </button>
+      <div className="p-6 text-center">
+        <div className="w-6 h-6 mx-auto border-2 border-[var(--info)] border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs text-[var(--smoke)]">Loading chat...</p>
       </div>
     );
   }
